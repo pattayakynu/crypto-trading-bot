@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply bg-gray-900 rounded-xl border border-gray-800 p-5;
+  }
+  .badge-green {
+    @apply inline-block px-2 py-0.5 rounded text-xs bg-green-900 text-green-300;
+  }
+  .badge-red {
+    @apply inline-block px-2 py-0.5 rounded text-xs bg-red-900 text-red-300;
+  }
+  .badge-blue {
+    @apply inline-block px-2 py-0.5 rounded text-xs bg-blue-900 text-blue-300;
+  }
+}
