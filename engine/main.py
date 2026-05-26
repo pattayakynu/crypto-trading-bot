@@ -472,7 +472,16 @@ def send_scheduled_report(session, services: dict, client, force: bool = False):
     try:
         btc_ticker = client.get_ticker(symbol="BTCUSDT") if client else {}
         eth_ticker = client.get_ticker(symbol="ETHUSDT") if client else {}
+        # Lấy balance thực từ Binance, fallback về DB equity
         equity = _get_equity(session)
+        if client:
+            try:
+                account = client.get_account()
+                usdt = next((a for a in account["balances"] if a["asset"] == "USDT"), None)
+                if usdt:
+                    equity = float(usdt["free"]) + float(usdt["locked"])
+            except Exception:
+                pass
         open_positions = session.query(Position).count()
 
         from sqlalchemy import func
@@ -482,12 +491,27 @@ def send_scheduled_report(session, services: dict, client, force: bool = False):
             Trade.created_at >= datetime.combine(date.today(), datetime.min.time())
         ).scalar() or 0.0
 
+        # Lấy market cap + BTC dominance từ CoinGecko (free, no key)
+        total_mcap_b = 0.0
+        btc_dominance = 0.0
+        try:
+            import httpx as _httpx
+            cg = _httpx.get(
+                "https://api.coingecko.com/api/v3/global",
+                timeout=8,
+            )
+            cg_data = cg.json().get("data", {})
+            total_mcap_b = cg_data.get("total_market_cap", {}).get("usd", 0) / 1e9
+            btc_dominance = cg_data.get("market_cap_percentage", {}).get("btc", 0)
+        except Exception as cg_err:
+            log.warning("CoinGecko fetch failed: %s", cg_err)
+
         market_data = {
             "btc_price": float(btc_ticker.get("lastPrice", 0)),
             "btc_change_24h": float(btc_ticker.get("priceChangePercent", 0)),
             "eth_change_24h": float(eth_ticker.get("priceChangePercent", 0)),
-            "total_market_cap_b": 0,  # Would need separate API call
-            "btc_dominance": 0,
+            "total_market_cap_b": total_mcap_b,
+            "btc_dominance": btc_dominance,
             "open_positions": open_positions,
             "total_pnl": today_pnl,
             "equity": equity,
