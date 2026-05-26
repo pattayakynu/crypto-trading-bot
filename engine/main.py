@@ -517,6 +517,14 @@ def main():
     learner = AdaptiveLearner(session)
     learner.record_equity(INITIAL_CAPITAL)
 
+    # Mark bot as running in Redis so dashboard shows correct status
+    try:
+        import redis as _redis
+        _r = _redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+        _r.set(f"{os.getenv('REDIS_KEY_PREFIX', 'bot:')}running", "running")
+    except Exception:
+        pass
+
     scheduler = BlockingScheduler(timezone="UTC")
 
     # Full scan every SCAN_INTERVAL seconds

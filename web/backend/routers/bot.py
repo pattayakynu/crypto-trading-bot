@@ -26,6 +26,7 @@ def bot_start():
     """Send start command to the trading engine via Redis."""
     r = get_redis()
     r.set(f"{KEY_PREFIX}control", "start")
+    r.set(f"{KEY_PREFIX}running", "running")
     return {"ok": True, "action": "start"}
 
 
@@ -34,6 +35,7 @@ def bot_stop():
     """Send stop command to the trading engine via Redis."""
     r = get_redis()
     r.set(f"{KEY_PREFIX}control", "stop")
+    r.set(f"{KEY_PREFIX}running", "stopped")
     return {"ok": True, "action": "stop"}
 
 

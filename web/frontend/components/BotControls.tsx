@@ -8,14 +8,18 @@ export default function BotControls() {
   const { data, isLoading } = useBotStatus();
   const { mutate } = useSWRConfig();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const running = data?.status === 'running';
 
   const toggle = async () => {
     setBusy(true);
+    setError('');
     try {
       await postCommand(running ? '/api/bot/stop' : '/api/bot/start');
       await mutate('/api/bot/status');
+    } catch (e: any) {
+      setError(e.message || 'Failed to connect to backend');
     } finally {
       setBusy(false);
     }
@@ -47,6 +51,9 @@ export default function BotControls() {
           {busy ? '…' : running ? 'Stop' : 'Start'}
         </button>
       </div>
+      {error && (
+        <p className="mt-2 text-xs text-red-400">{error}</p>
+      )}
     </div>
   );
 }
