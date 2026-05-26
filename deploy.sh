@@ -38,7 +38,7 @@ ask() {
     local var=$1 label=$2 default=${3:-}
     local current; current=$(eval echo "\${$var:-$default}")
     printf "  ${YELLOW}→${NC} %-36s [%s]: " "$label" "$current"
-    read -r val
+    read -r val || true
     eval "$var='${val:-$current}'"
 }
 
@@ -51,8 +51,8 @@ ask_secret() {
     else
         printf "  ${YELLOW}→${NC} %-36s : " "$label"
     fi
-    read -rs val; echo
-    [[ -n "$val" ]] && eval "$var='$val'"
+    read -rs val || true; echo
+    [[ -n "$val" ]] && eval "$var='$val'" || true
 }
 
 # Sinh secret ngẫu nhiên
