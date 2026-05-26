@@ -208,7 +208,7 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     ta_score = 0
     try:
         import pandas as pd
-        klines = client.get_klines(symbol=pair, interval="4h", limit=100) if client else []
+        klines = client.get_klines(symbol=pair, interval="1h", limit=100) if client else []
         if klines:
             df = pd.DataFrame(klines, columns=[
                 "open_time", "open", "high", "low", "close", "volume",
