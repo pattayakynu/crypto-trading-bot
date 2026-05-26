@@ -108,8 +108,8 @@ services:
     restart: unless-stopped
     depends_on:
       - web-backend
-    ports:
-      - "3000:3000"
+    # ports are defined in docker-compose.override.yml (server-specific)
+    # local dev default: add -p 3000:3000 or create your own override file
 
 # ── Volumes ───────────────────────────────────────────────────
 volumes:
