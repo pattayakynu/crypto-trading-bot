@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Server-specific overrides (created on each server manually)
+docker-compose.override.yml
+
 # Python
 __pycache__/
 *.pyc
