@@ -73,10 +73,14 @@ def main():
         binance_secret = os.getenv("BINANCE_SECRET_KEY", "")
         tld = os.getenv("BINANCE_TLD", "com")
         testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+        proxy_url = os.getenv("BINANCE_PROXY", "")
         if tld == "us":
             testnet = False
         if binance_key:
-            binance_client = BinanceClient(binance_key, binance_secret, tld=tld, testnet=testnet)
+            kwargs = {"tld": tld, "testnet": testnet}
+            if proxy_url:
+                kwargs["requests_params"] = {"proxies": {"http": proxy_url, "https": proxy_url}}
+            binance_client = BinanceClient(binance_key, binance_secret, **kwargs)
             log.info("Binance client connected (tld=%s testnet=%s)", tld, testnet)
     except Exception as e:
         log.warning("Binance client unavailable: %s", e)

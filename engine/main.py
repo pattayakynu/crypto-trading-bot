@@ -85,6 +85,7 @@ def bootstrap():
     binance_secret = os.getenv("BINANCE_SECRET_KEY", "")
     tld = os.getenv("BINANCE_TLD", "com")          # "us" for Binance.US servers
     testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+    proxy_url = os.getenv("BINANCE_PROXY", "")     # e.g. socks5h://user:pass@host:port
     # Binance.US has no testnet — force live mode
     if tld == "us":
         testnet = False
@@ -92,7 +93,11 @@ def bootstrap():
     client = None
     if binance_key:
         try:
-            client = BinanceClient(binance_key, binance_secret, tld=tld, testnet=testnet)
+            kwargs = {"tld": tld, "testnet": testnet}
+            if proxy_url:
+                kwargs["requests_params"] = {"proxies": {"http": proxy_url, "https": proxy_url}}
+                log.info("Using proxy: %s", proxy_url.split("@")[-1])  # log host only, not credentials
+            client = BinanceClient(binance_key, binance_secret, **kwargs)
             log.info("Binance client connected (tld=%s testnet=%s)", tld, testnet)
         except Exception as e:
             log.warning("Binance client unavailable — running in dry-run mode: %s", e)

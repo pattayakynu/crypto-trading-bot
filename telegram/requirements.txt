@@ -1,4 +1,6 @@
 python-telegram-bot==20.7
+python-binance==1.0.19
+PySocks==1.7.1
 redis==5.0.4
 python-dotenv==1.0.1
 SQLAlchemy==2.0.30

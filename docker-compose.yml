@@ -52,6 +52,7 @@ services:
       BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
       BINANCE_TLD: ${BINANCE_TLD:-com}
       BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+      BINANCE_PROXY: ${BINANCE_PROXY:-}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       SCAN_INTERVAL_SECONDS: ${SCAN_INTERVAL_SECONDS:-300}
@@ -77,6 +78,7 @@ services:
       BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
       BINANCE_TLD: ${BINANCE_TLD:-com}
       BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+      BINANCE_PROXY: ${BINANCE_PROXY:-}
 
   # ── Web Backend (FastAPI) ────────────────────────────────────
   web-backend:
