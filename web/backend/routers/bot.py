@@ -5,6 +5,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 
+# NOTE: websocket_events is intentionally NOT added to this router.
+# It is registered directly on the app in main.py without auth middleware,
+# because browsers cannot send custom headers on WebSocket upgrade requests.
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 KEY_PREFIX = os.getenv("REDIS_KEY_PREFIX", "bot:")
 

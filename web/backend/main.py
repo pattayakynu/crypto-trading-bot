@@ -40,6 +40,11 @@ app.include_router(performance.router,   prefix="/api", **_protected)
 app.include_router(bot_router.router,    prefix="/api", **_protected)
 app.include_router(config_router.router, prefix="/api", **_protected)
 
+# WebSocket is registered separately without API-key auth because browsers
+# cannot send custom headers on WebSocket upgrade requests.
+from routers.bot import websocket_events
+app.add_api_websocket_route("/api/ws/events", websocket_events)
+
 
 @app.get("/health")
 def health():
