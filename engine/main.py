@@ -85,9 +85,13 @@ def bootstrap():
     binance_secret = os.getenv("BINANCE_SECRET_KEY", "")
     testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
 
-    client = BinanceClient(binance_key, binance_secret, testnet=testnet) if binance_key else None
-    if client:
-        log.info("Binance client connected (testnet=%s)", testnet)
+    client = None
+    if binance_key:
+        try:
+            client = BinanceClient(binance_key, binance_secret, testnet=testnet)
+            log.info("Binance client connected (testnet=%s)", testnet)
+        except Exception as e:
+            log.warning("Binance client unavailable — running in dry-run mode: %s", e)
     else:
         log.warning("No Binance API key — running in dry-run mode")
 
