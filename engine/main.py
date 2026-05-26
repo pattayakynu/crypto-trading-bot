@@ -460,13 +460,13 @@ def _close_position(pos, exit_price: float, reason: str, session, services: dict
 
 # ── Scheduled report ──────────────────────────────────────────────────────────
 
-def send_scheduled_report(session, services: dict, client):
+def send_scheduled_report(session, services: dict, client, force: bool = False):
     """Build and publish the 4x daily market report."""
     reporter: MarketReporter = services["reporter"]
     publisher: EventPublisher = services["publisher"]
 
     now = _now()
-    if not reporter.should_send_report(now.hour, now.minute):
+    if not force and not reporter.should_send_report(now.hour, now.minute):
         return
 
     try:
@@ -518,12 +518,13 @@ def main():
     learner.record_equity(INITIAL_CAPITAL)
 
     # Mark bot as running in Redis so dashboard shows correct status
+    import redis as _redis
+    KEY_PREFIX = os.getenv("REDIS_KEY_PREFIX", "bot:")
     try:
-        import redis as _redis
         _r = _redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
-        _r.set(f"{os.getenv('REDIS_KEY_PREFIX', 'bot:')}running", "running")
+        _r.set(f"{KEY_PREFIX}running", "running")
     except Exception:
-        pass
+        _r = None
 
     scheduler = BlockingScheduler(timezone="UTC")
 
@@ -542,9 +543,15 @@ def main():
     def monitor_job():
         monitor_positions(session, services, client)
 
-    # Report check every minute (sends only if time matches)
+    # Report check every minute (sends on schedule OR when /report command sets flag)
     def report_job():
-        send_scheduled_report(session, services, client)
+        forced = False
+        if _r:
+            try:
+                forced = bool(_r.getdel(f"{KEY_PREFIX}force_report"))
+            except Exception:
+                pass
+        send_scheduled_report(session, services, client, force=forced)
 
     scheduler.add_job(scan_job, "interval", seconds=SCAN_INTERVAL, id="scan")
     scheduler.add_job(monitor_job, "interval", seconds=60, id="monitor")

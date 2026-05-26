@@ -138,9 +138,10 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
                      redis_client=None, **kwargs):
     """Trigger an immediate market report."""
     if redis_client:
-        redis_client.publish("bot:control", '{"action": "report_now"}')
+        # Set a flag key — engine checks this every 60s trong report_job
+        redis_client.set("bot:force_report", "1", ex=300)  # expire 5 phút nếu engine chết
     await update.message.reply_text(
-        "📊 Report generation triggered. Will arrive shortly.",
+        "📊 Đang tạo báo cáo... sẽ gửi trong vòng 60 giây.",
     )
 
 
