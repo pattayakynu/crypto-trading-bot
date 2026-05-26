@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/trades" className="text-sm text-gray-400 hover:text-white transition">
               Trades
             </Link>
+            <Link href="/settings" className="text-sm text-gray-400 hover:text-white transition">
+              Settings
+            </Link>
           </div>
         </nav>
         <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
