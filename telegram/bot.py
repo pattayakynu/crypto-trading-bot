@@ -16,7 +16,6 @@ Alerts: automatically forwarded from Redis pub/sub channels.
 """
 
 import os
-import sys
 import logging
 from functools import wraps
 
@@ -41,10 +40,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger(__name__)
-
-# Engine DB path (shared volume in Docker)
-ENGINE_PATH = os.path.join(os.path.dirname(__file__), "..", "engine")
-sys.path.insert(0, ENGINE_PATH)
 
 
 def main():

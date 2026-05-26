@@ -1,15 +1,11 @@
 import os
-import sys
 from datetime import datetime, timezone
 
 from telegram import Update
 from telegram.ext import ContextTypes
 from sqlalchemy.orm import Session
 
-# Engine DB models are shared via volume mount at /app/engine in Docker,
-# or via sys.path insert in local dev.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
-from db import Trade, Position
+from db import Trade, Position, LayerWeight
 
 
 def _now():
@@ -155,8 +151,6 @@ async def cmd_weights(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await update.message.reply_text("⚠️ DB not available.")
         return
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
-    from db import LayerWeight
     rows = db_session.query(LayerWeight).all()
     if not rows:
         await update.message.reply_text("No weights found.")

@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for the web backend.
+SQLAlchemy models for the telegram service.
 Mirrors engine/db.py — both services share the same SQLite volume (/data/trading.db).
 """
 from datetime import datetime
