@@ -1,0 +1,117 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────
+#  Crypto Trading Bot — full stack
+#
+#  Services:
+#    redis        — event bus (pub/sub) + control keys
+#    engine       — trading engine (signal pipeline, scheduler)
+#    telegram     — Telegram bot (commands + alerts)
+#    web-backend  — FastAPI REST + WebSocket  → :8000
+#    web-frontend — Next.js dashboard         → :3000
+#
+#  Shared state:
+#    db_data      — SQLite volume mounted at /data in Python services
+#    redis_data   — Redis persistence
+#
+#  Usage:
+#    cp .env.example .env   # fill in real secrets
+#    docker compose up -d   # start everything
+#    docker compose logs -f engine   # tail trading engine logs
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Redis ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Trading Engine ───────────────────────────────────────────
+  engine:
+    build:
+      context: ./engine
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db_data:/data
+    environment:
+      DATABASE_URL: sqlite:////data/trading.db
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-bot:}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
+      BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      SCAN_INTERVAL_SECONDS: ${SCAN_INTERVAL_SECONDS:-300}
+      REPORT_TIMES: ${REPORT_TIMES:-07:00,12:00,17:00,22:00}
+
+  # ── Telegram Bot ─────────────────────────────────────────────
+  telegram:
+    build:
+      context: ./telegram
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db_data:/data
+    environment:
+      DATABASE_URL: sqlite:////data/trading.db
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-bot:}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
+      BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+
+  # ── Web Backend (FastAPI) ────────────────────────────────────
+  web-backend:
+    build:
+      context: ./web/backend
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - db_data:/data
+    environment:
+      DATABASE_URL: sqlite:////data/trading.db
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-bot:}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
+      BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+      WEB_API_KEY: ${WEB_API_KEY:-change-me-secret}
+
+  # ── Web Frontend (Next.js) ───────────────────────────────────
+  web-frontend:
+    build:
+      context: ./web/frontend
+      args:
+        # NEXT_PUBLIC_* vars are baked in at build time by Next.js
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_KEY: ${WEB_API_KEY:-change-me-secret}
+    restart: unless-stopped
+    depends_on:
+      - web-backend
+    ports:
+      - "3000:3000"
+
+# ── Volumes ───────────────────────────────────────────────────
+volumes:
+  db_data:
+  redis_data:
