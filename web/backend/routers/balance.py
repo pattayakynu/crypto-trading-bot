@@ -6,11 +6,15 @@ router = APIRouter()
 
 def _get_binance():
     from binance.client import Client
-    return Client(
-        os.getenv("BINANCE_API_KEY", ""),
-        os.getenv("BINANCE_SECRET_KEY", ""),
-        testnet=os.getenv("BINANCE_TESTNET", "true").lower() == "true",
-    )
+    tld = os.getenv("BINANCE_TLD", "com")
+    testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+    if tld == "us":
+        testnet = False
+    proxy_url = os.getenv("BINANCE_PROXY", "")
+    kwargs = {"tld": tld, "testnet": testnet}
+    if proxy_url:
+        kwargs["requests_params"] = {"proxies": {"http": proxy_url, "https": proxy_url}}
+    return Client(os.getenv("BINANCE_API_KEY", ""), os.getenv("BINANCE_SECRET_KEY", ""), **kwargs)
 
 
 @router.get("/balance")

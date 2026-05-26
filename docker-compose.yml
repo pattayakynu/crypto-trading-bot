@@ -100,6 +100,7 @@ services:
       BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
       BINANCE_TLD: ${BINANCE_TLD:-com}
       BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
+      BINANCE_PROXY: ${BINANCE_PROXY:-}
       WEB_API_KEY: ${WEB_API_KEY:-change-me-secret}
 
   # ── Web Frontend (Next.js) ───────────────────────────────────
