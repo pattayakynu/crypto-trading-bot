@@ -71,10 +71,13 @@ def main():
         from binance.client import Client as BinanceClient
         binance_key = os.getenv("BINANCE_API_KEY", "")
         binance_secret = os.getenv("BINANCE_SECRET_KEY", "")
+        tld = os.getenv("BINANCE_TLD", "com")
         testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+        if tld == "us":
+            testnet = False
         if binance_key:
-            binance_client = BinanceClient(binance_key, binance_secret, testnet=testnet)
-            log.info("Binance client connected (testnet=%s)", testnet)
+            binance_client = BinanceClient(binance_key, binance_secret, tld=tld, testnet=testnet)
+            log.info("Binance client connected (tld=%s testnet=%s)", tld, testnet)
     except Exception as e:
         log.warning("Binance client unavailable: %s", e)
 

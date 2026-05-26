@@ -83,13 +83,17 @@ def bootstrap():
 
     binance_key = os.getenv("BINANCE_API_KEY", "")
     binance_secret = os.getenv("BINANCE_SECRET_KEY", "")
+    tld = os.getenv("BINANCE_TLD", "com")          # "us" for Binance.US servers
     testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+    # Binance.US has no testnet — force live mode
+    if tld == "us":
+        testnet = False
 
     client = None
     if binance_key:
         try:
-            client = BinanceClient(binance_key, binance_secret, testnet=testnet)
-            log.info("Binance client connected (testnet=%s)", testnet)
+            client = BinanceClient(binance_key, binance_secret, tld=tld, testnet=testnet)
+            log.info("Binance client connected (tld=%s testnet=%s)", tld, testnet)
         except Exception as e:
             log.warning("Binance client unavailable — running in dry-run mode: %s", e)
     else:

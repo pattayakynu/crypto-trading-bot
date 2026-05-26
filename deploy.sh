@@ -153,6 +153,7 @@ echo
 echo -e "  ${BOLD}── Binance ──────────────────────────────────────────${NC}"
 ask_secret BINANCE_API_KEY    "BINANCE_API_KEY"
 ask_secret BINANCE_SECRET_KEY "BINANCE_SECRET_KEY"
+ask        BINANCE_TLD        "BINANCE_TLD (com = Binance global / us = Binance.US)" "com"
 ask        BINANCE_TESTNET    "BINANCE_TESTNET (true=testnet / false=live)" "true"
 
 echo
@@ -176,6 +177,7 @@ cat > .env <<ENV
 # Binance
 BINANCE_API_KEY=${BINANCE_API_KEY:-}
 BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY:-}
+BINANCE_TLD=${BINANCE_TLD:-com}
 BINANCE_TESTNET=${BINANCE_TESTNET:-true}
 
 # AI
