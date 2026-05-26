@@ -1,4 +1,9 @@
+import logging
 import yfinance as yf
+
+# Tắt yfinance logger để tránh spam lỗi khi ticker không có data
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 # DXY: Dollar index — DXY tăng = bad for crypto (dollar strengthening)
 DXY_BEARISH_THRESHOLD = 0.5     # DXY tăng > 0.5% → bearish for crypto
@@ -17,31 +22,29 @@ class MacroContext:
         self._dxy_cache = None
         self._gold_cache = None
 
-    def fetch_dxy_change(self) -> float:
-        """Fetch DXY (Dollar Index) 1-day % change via yfinance."""
+    def _fetch_pct_change(self, symbol: str) -> float:
+        """Fetch 1-day % change for a ticker. Returns 0.0 on any error (silent)."""
         try:
-            ticker = yf.Ticker("DX-Y.NYB")
-            hist = ticker.history(period="2d")
+            hist = yf.Ticker(symbol).history(period="5d")
             if len(hist) < 2:
                 return 0.0
-            prev = hist["Close"].iloc[-2]
-            curr = hist["Close"].iloc[-1]
+            prev = float(hist["Close"].iloc[-2])
+            curr = float(hist["Close"].iloc[-1])
+            if prev == 0.0:
+                return 0.0
             return (curr - prev) / prev * 100
         except Exception:
             return 0.0
 
+    def fetch_dxy_change(self) -> float:
+        """Fetch DXY 1-day % change — dùng UUP ETF (Invesco DB US Dollar Index Bullish Fund)."""
+        # UUP bám sát DXY, liquid hơn và ticker ổn định hơn DX-Y.NYB
+        return self._fetch_pct_change("UUP")
+
     def fetch_gold_change(self) -> float:
-        """Fetch Gold (XAU/USD) 1-day % change via yfinance."""
-        try:
-            ticker = yf.Ticker("GC=F")
-            hist = ticker.history(period="2d")
-            if len(hist) < 2:
-                return 0.0
-            prev = hist["Close"].iloc[-2]
-            curr = hist["Close"].iloc[-1]
-            return (curr - prev) / prev * 100
-        except Exception:
-            return 0.0
+        """Fetch Gold 1-day % change — dùng GLD ETF (SPDR Gold Shares)."""
+        # GLD bám sát giá vàng spot, ổn định hơn GC=F futures (tránh lỗi rollover)
+        return self._fetch_pct_change("GLD")
 
     def score_dxy(self, dxy_change_pct: float) -> int:
         """
