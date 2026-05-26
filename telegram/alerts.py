@@ -135,12 +135,16 @@ class AlertSubscriber:
                 log.error("Alert processing error: %s", exc)
 
     def _send_to_all(self, text: str):
+        # Dùng httpx sync thay vì run_coroutine_threadsafe — loop không run_forever nên
+        # coroutine sẽ không bao giờ được thực thi nếu dùng cách cũ.
+        import httpx
+        url = f"https://api.telegram.org/bot{self.bot.token}/sendMessage"
         for uid in self.allowed_ids:
-            future = asyncio.run_coroutine_threadsafe(
-                self.bot.send_message(chat_id=uid, text=text, parse_mode="Markdown"),
-                self._loop,
-            )
             try:
-                future.result(timeout=10)
+                httpx.post(
+                    url,
+                    json={"chat_id": uid, "text": text, "parse_mode": "Markdown"},
+                    timeout=10,
+                )
             except Exception as e:
                 log.error("Failed to send Telegram message to %d: %s", uid, e)
