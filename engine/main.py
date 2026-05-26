@@ -63,12 +63,15 @@ MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "1_000_000"))
 INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "100"))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
 
-# Watchlist — pairs to scan on each cycle
+# Watchlist — top 5 vốn hóa lớn nhất, thanh khoản tốt nhất
 WATCHLIST = [
-    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
-    "AVAXUSDT", "DOTUSDT", "ADAUSDT", "MATICUSDT",
-    "LINKUSDT", "NEARUSDT",
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
 ]
+
+# Futures SHORT threshold: score ≤ 30 + bearish macro/BTC → mở short 2x
+SHORT_CONVICTION_THRESHOLD = int(os.getenv("SHORT_CONVICTION_THRESHOLD", "30"))
+# Max % equity cho futures short (nhỏ hơn spot vì dùng đòn bẩy)
+MAX_SHORT_POSITION_PCT = 0.25
 
 
 def _now():
@@ -269,21 +272,32 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     log.info("[%s] Score=%d action=%s confidence=%s",
              pair, conviction.total_score, conviction.action, conviction.confidence)
 
-    if not conviction.should_trade:
-        return {"pair": pair, "action": conviction.action, "score": conviction.total_score}
-
-    # ── LLM Dual Analysis ─────────────────────────────────────────────────
-    llm_result = llm.analyze(
-        symbol=pair,
-        conviction_score=conviction.total_score,
-        layer_scores=layer_scores.as_dict(),
-        price_change_pct=price_change,
-        reasons=conviction.reasons,
+    # ── Xác định hướng giao dịch ─────────────────────────────────────────
+    # SHORT: score thấp + macro bearish + BTC dẫn xuống + TA bearish
+    is_bearish_short = (
+        conviction.total_score <= SHORT_CONVICTION_THRESHOLD
+        and btc_lead_score <= 3    # BTC đang dẫn xuống (max 20)
+        and macro_score <= 5       # Macro bearish: DXY tăng (max 20)
+        and ta_score <= 3          # TA bearish: RSI cao, MACD giảm (max 10)
     )
 
-    if llm_result["disagreement_skipped"]:
-        log.info("[%s] SKIP — LLM disagreement", pair)
-        return {"pair": pair, "action": "SKIP_LLM_DISAGREEMENT", "score": conviction.total_score}
+    if not conviction.should_trade and not is_bearish_short:
+        return {"pair": pair, "action": conviction.action, "score": conviction.total_score}
+
+    trade_side = "LONG" if conviction.should_trade else "SHORT"
+
+    # ── LLM Dual Analysis (chỉ cho LONG — SHORT dùng rule-based) ─────────
+    if trade_side == "LONG":
+        llm_result = llm.analyze(
+            symbol=pair,
+            conviction_score=conviction.total_score,
+            layer_scores=layer_scores.as_dict(),
+            price_change_pct=price_change,
+            reasons=conviction.reasons,
+        )
+        if llm_result["disagreement_skipped"]:
+            log.info("[%s] SKIP — LLM disagreement", pair)
+            return {"pair": pair, "action": "SKIP_LLM_DISAGREEMENT", "score": conviction.total_score}
 
     # ── Position Limit ────────────────────────────────────────────────────
     equity = _get_equity(session)
@@ -302,52 +316,82 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         publisher.publish_alert("CRITICAL", f"Drawdown guard triggered: {drawdown['drawdown_pct']*100:.1f}%", drawdown)
         return {"pair": pair, "action": "SKIP_DRAWDOWN_GUARD"}
 
-    # ── Execute Trade ─────────────────────────────────────────────────────
-    size = rm.calc_position_size(conviction.total_score, conviction.confidence)
-    if size == 0:
-        return {"pair": pair, "action": "SKIP_EQUITY_TOO_SMALL"}
+    # ── Execute SPOT LONG ─────────────────────────────────────────────────
+    if trade_side == "LONG":
+        size = rm.calc_position_size(conviction.total_score, conviction.confidence)
+        if size == 0:
+            return {"pair": pair, "action": "SKIP_EQUITY_TOO_SMALL"}
 
-    qty = rm.calc_qty(size, current_price)
-    sl = rm.calc_stop_loss(current_price, side="LONG")
-    tp = rm.calc_take_profit(current_price, conviction.confidence, side="LONG")
+        qty = rm.calc_qty(size, current_price)
+        sl = rm.calc_stop_loss(current_price, side="LONG")
+        tp = rm.calc_take_profit(current_price, conviction.confidence, side="LONG")
 
-    result = services["executor"].buy_spot(pair, qty)
-    if not result.success:
-        log.error("[%s] BUY FAILED: %s", pair, result.error)
-        return {"pair": pair, "action": "EXEC_FAILED", "error": result.error}
+        result = services["executor"].buy_spot(pair, qty)
+        if not result.success:
+            log.error("[%s] BUY FAILED: %s", pair, result.error)
+            return {"pair": pair, "action": "EXEC_FAILED", "error": result.error}
 
-    fill_price = result.price or current_price
+        fill_price = result.price or current_price
+        position = Position(
+            pair=pair, market_type="SPOT", side="LONG",
+            entry_price=fill_price, qty=result.qty,
+            usdt_value=fill_price * result.qty,
+            stop_loss=rm.calc_stop_loss(fill_price, "LONG"),
+            take_profit=rm.calc_take_profit(fill_price, conviction.confidence, "LONG"),
+            trailing_stop_active=False, highest_price=fill_price,
+            conviction_score=conviction.total_score,
+        )
+        session.add(position)
+        session.commit()
 
-    # Save position to DB
-    position = Position(
-        pair=pair,
-        market_type="SPOT",
-        side="LONG",
-        entry_price=fill_price,
-        qty=result.qty,
-        usdt_value=fill_price * result.qty,
-        stop_loss=rm.calc_stop_loss(fill_price),
-        take_profit=rm.calc_take_profit(fill_price, conviction.confidence),
-        trailing_stop_active=False,
-        highest_price=fill_price,
-        conviction_score=conviction.total_score,
-    )
-    session.add(position)
-    session.commit()
+        publisher.publish_trade_opened(
+            pair=pair, side="LONG", market_type="SPOT",
+            entry_price=fill_price, qty=result.qty,
+            usdt_value=fill_price * result.qty,
+            stop_loss=position.stop_loss, take_profit=position.take_profit,
+            conviction_score=conviction.total_score,
+        )
+        log.info("[%s] LONG OPENED (SPOT): qty=%.6f @ %.4f | SL=%.4f TP=%.4f",
+                 pair, result.qty, fill_price, position.stop_loss, position.take_profit)
+        return {"pair": pair, "action": "BUY_OPENED", "price": fill_price, "qty": result.qty}
 
-    publisher.publish_trade_opened(
-        pair=pair, side="LONG", market_type="SPOT",
-        entry_price=fill_price, qty=result.qty,
-        usdt_value=fill_price * result.qty,
-        stop_loss=position.stop_loss,
-        take_profit=position.take_profit,
-        conviction_score=conviction.total_score,
-    )
+    # ── Execute FUTURES SHORT ─────────────────────────────────────────────
+    else:
+        # Futures short: tối đa 25% equity (nhỏ hơn spot vì có đòn bẩy 2x)
+        size = max(10.0, min(equity * MAX_SHORT_POSITION_PCT, equity * MAX_SHORT_POSITION_PCT))
+        qty = rm.calc_qty(size, current_price)
 
-    log.info("[%s] BUY OPENED: qty=%.6f @ %.4f | SL=%.4f TP=%.4f",
-             pair, result.qty, fill_price, position.stop_loss, position.take_profit)
+        sl = rm.calc_stop_loss(current_price, side="SHORT")   # 5% trên entry
+        tp = rm.calc_take_profit(current_price, "MEDIUM", side="SHORT")  # 5% dưới entry
 
-    return {"pair": pair, "action": "BUY_OPENED", "price": fill_price, "qty": result.qty}
+        result = services["executor"].short_futures(pair, qty, leverage=2)
+        if not result.success:
+            log.error("[%s] SHORT FAILED: %s", pair, result.error)
+            return {"pair": pair, "action": "EXEC_FAILED", "error": result.error}
+
+        fill_price = result.price or current_price
+        position = Position(
+            pair=pair, market_type="FUTURES", side="SHORT",
+            entry_price=fill_price, qty=result.qty,
+            usdt_value=fill_price * result.qty,
+            stop_loss=rm.calc_stop_loss(fill_price, "SHORT"),
+            take_profit=rm.calc_take_profit(fill_price, "MEDIUM", "SHORT"),
+            trailing_stop_active=False, highest_price=fill_price,
+            conviction_score=conviction.total_score,
+        )
+        session.add(position)
+        session.commit()
+
+        publisher.publish_trade_opened(
+            pair=pair, side="SHORT", market_type="FUTURES",
+            entry_price=fill_price, qty=result.qty,
+            usdt_value=fill_price * result.qty,
+            stop_loss=position.stop_loss, take_profit=position.take_profit,
+            conviction_score=conviction.total_score,
+        )
+        log.info("[%s] SHORT OPENED (FUTURES 2x): qty=%.6f @ %.4f | SL=%.4f TP=%.4f",
+                 pair, result.qty, fill_price, position.stop_loss, position.take_profit)
+        return {"pair": pair, "action": "SHORT_OPENED", "price": fill_price, "qty": result.qty}
 
 
 # ── Position monitor ──────────────────────────────────────────────────────────
