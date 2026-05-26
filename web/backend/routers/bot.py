@@ -1,13 +1,9 @@
 import os
-import json
+import asyncio
 import redis as redis_lib
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
-
-# NOTE: websocket_events is intentionally NOT added to this router.
-# It is registered directly on the app in main.py without auth middleware,
-# because browsers cannot send custom headers on WebSocket upgrade requests.
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 KEY_PREFIX = os.getenv("REDIS_KEY_PREFIX", "bot:")
@@ -43,12 +39,10 @@ def bot_stop():
     return {"ok": True, "action": "stop"}
 
 
-@router.websocket("/ws/events")
+# Registered directly on app in main.py (no auth — browsers can't send
+# custom headers on WebSocket upgrade requests).
 async def websocket_events(websocket: WebSocket):
-    """
-    Stream Redis pub/sub events to the connected WebSocket client.
-    Frontend connects here to receive real-time trade/signal events.
-    """
+    """Stream Redis pub/sub events to the connected WebSocket client."""
     await websocket.accept()
     r = redis_lib.from_url(REDIS_URL, decode_responses=True)
     pubsub = r.pubsub()
@@ -60,9 +54,15 @@ async def websocket_events(websocket: WebSocket):
         f"{KEY_PREFIX}report",
     ]
     pubsub.subscribe(*channels)
+
+    loop = asyncio.get_event_loop()
     try:
-        for message in pubsub.listen():
-            if message["type"] == "message":
+        while True:
+            # Run blocking pubsub.get_message() in a thread so the event loop stays free
+            message = await loop.run_in_executor(
+                None, lambda: pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            )
+            if message and message["type"] == "message":
                 await websocket.send_text(message["data"])
     except WebSocketDisconnect:
         pubsub.unsubscribe()
