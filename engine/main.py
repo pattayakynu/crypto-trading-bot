@@ -157,13 +157,13 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     price_change = float(ticker.get("priceChangePercent", 0))
     current_price = float(ticker.get("lastPrice", 0))
 
-    btc_ticker = {}
-    if client and pair != "BTCUSDT":
-        try:
-            btc_ticker = client.get_ticker(symbol="BTCUSDT")
-        except Exception:
-            pass
-    btc_change = float(btc_ticker.get("priceChangePercent", 0))
+    # BTC 24h change: for BTCUSDT pair use its own ticker (already fetched above).
+    # For other pairs use BtcLeadSignal.get_btc_change_pct() which tries Binance
+    # then falls back to CoinGecko — so geo-blocking can't permanently zero this out.
+    if pair == "BTCUSDT":
+        btc_change = price_change
+    else:
+        btc_change = btc.get_btc_change_pct()
     spot_ratio = btc.get_spot_futures_ratio("BTCUSDT")
 
     manip_result = manipulator.check_btc_pump(btc_change, spot_ratio)

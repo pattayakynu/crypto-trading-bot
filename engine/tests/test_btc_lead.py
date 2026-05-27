@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock, patch
 from btc_lead import BtcLeadSignal
 
 
@@ -93,3 +94,45 @@ def test_total_score_futures_driven_minimum():
         alt_change_pct=5.0
     )
     assert score == 0
+
+
+# --- get_btc_change_pct fallback ---
+
+def test_get_btc_change_pct_uses_binance_when_available():
+    import btc_lead as m
+    # Reset cache so the fresh fetch is used
+    m._btc_change_cache = {"value": None, "ts": 0.0}
+
+    client = MagicMock()
+    client.get_ticker.return_value = {"priceChangePercent": "2.35"}
+    s = BtcLeadSignal(client=client)
+    result = s.get_btc_change_pct()
+    assert result == pytest.approx(2.35)
+
+
+def test_get_btc_change_pct_falls_back_to_coingecko_on_binance_failure():
+    import btc_lead as m
+    m._btc_change_cache = {"value": None, "ts": 0.0}
+
+    client = MagicMock()
+    client.get_ticker.side_effect = Exception("geo-blocked")
+    s = BtcLeadSignal(client=client)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"bitcoin": {"usd_24h_change": -1.78}}
+
+    with patch("btc_lead.httpx.get", return_value=mock_resp):
+        result = s.get_btc_change_pct()
+
+    assert result == pytest.approx(-1.78)
+
+
+def test_get_btc_change_pct_returns_zero_when_all_fail():
+    import btc_lead as m
+    m._btc_change_cache = {"value": None, "ts": 0.0}
+
+    s = BtcLeadSignal(client=None)
+    with patch("btc_lead.httpx.get", side_effect=Exception("timeout")):
+        result = s.get_btc_change_pct()
+    assert result == 0.0
