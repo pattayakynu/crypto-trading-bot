@@ -102,6 +102,7 @@ services:
       BINANCE_TESTNET: ${BINANCE_TESTNET:-true}
       BINANCE_PROXY: ${BINANCE_PROXY:-}
       WEB_API_KEY: ${WEB_API_KEY:-change-me-secret}
+      CRYPTOPANIC_API_KEY: ${CRYPTOPANIC_API_KEY:-}
 
   # ── Web Frontend (Next.js) ───────────────────────────────────
   web-frontend:
