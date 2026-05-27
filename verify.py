@@ -79,8 +79,8 @@ check("CoinGecko fallback có trong btc_lead",
       "engine/btc_lead.py", must_have=r"coingecko\.com")
 check("main.py gọi get_btc_change_pct thay vì raw ticker",
       "engine/main.py", must_have=r"get_btc_change_pct")
-check("BTC pair dùng price_change cho btc_change",
-      "engine/main.py", must_have=r'pair == "BTCUSDT"')
+check("btc_change dùng get_btc_change_pct cho mọi pair (không hardcode price_change)",
+      "engine/main.py", must_have=r"btc_change = btc\.get_btc_change_pct\(\)")
 
 # ── Web backend ───────────────────────────────────────────
 print("\n── Web backend ─────────────────────────────────────────")
