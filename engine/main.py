@@ -245,15 +245,6 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     )
     conviction = scorer.score(layer_scores)
 
-    # Log signal
-    session.add(SignalLog(
-        pair=pair,
-        total_score=conviction.total_score,
-        layer_scores=json.dumps(layer_scores.as_dict()),
-        action=conviction.action,
-    ))
-    session.commit()
-
     publisher.publish_signal(
         pair=pair,
         score=conviction.total_score,
@@ -276,6 +267,18 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         alt_change=price_change,
         has_open_long=has_open_long,
     )
+
+    # Log signal — ghi sau khi ShortBrain evaluate để có đủ short fields
+    session.add(SignalLog(
+        pair=pair,
+        total_score=conviction.total_score,
+        layer_scores=json.dumps(layer_scores.as_dict()),
+        action=conviction.action,
+        short_total_score=short_signal.score,
+        short_regime=short_signal.regime,
+        short_scores=json.dumps(short_signal.signal_scores) if short_signal.signal_scores else None,
+    ))
+    session.commit()
 
     if not conviction.should_trade and not short_signal.should_short:
         return {"pair": pair, "action": conviction.action, "score": conviction.total_score}
