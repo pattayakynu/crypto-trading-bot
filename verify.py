@@ -125,6 +125,24 @@ check("CoinGecko global fetch trong reporter",
 print("\n── Tính năng ───────────────────────────────────────────")
 check("SHORT_CONVICTION_THRESHOLD có mặt",
       "engine/main.py", must_have=r"SHORT_CONVICTION_THRESHOLD")
+check("regime.py tồn tại với MarketRegime",
+      "engine/regime.py", must_have=r"class MarketRegime")
+check("short_brain.py tồn tại với ShortBrain",
+      "engine/short_brain.py", must_have=r"class ShortBrain")
+check("ShortBrain được import trong main.py",
+      "engine/main.py", must_have=r"from short_brain import ShortBrain")
+check("LLM SHORT gate có trong main.py",
+      "engine/main.py", must_have=r"analyze_short")
+check("SHORT leverage là 1x",
+      "engine/main.py", must_have=r"leverage=1")
+check("MAX_SHORT_POSITION_PCT = 0.05",
+      "engine/main.py", must_have=r"MAX_SHORT_POSITION_PCT = 0\.05")
+check("analyze_short method có trong llm_advisor",
+      "engine/llm_advisor.py", must_have=r"def analyze_short")
+check("Funding reset signal có trong short_brain",
+      "engine/short_brain.py", must_have=r"def score_funding_reset")
+check("Volume exhaustion signal có trong short_brain",
+      "engine/short_brain.py", must_have=r"def score_volume_exhaustion")
 
 print(f"\n{'═'*56}")
 total = passed + failed
