@@ -65,9 +65,10 @@ MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "1_000_000"))
 INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "100"))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
 
-# Watchlist — top 5 vốn hóa lớn nhất, thanh khoản tốt nhất
+# Watchlist — top 10 coins thanh khoản tốt nhất trên Binance
 WATCHLIST = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    "XRPUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT",
 ]
 
 # Futures SHORT threshold: score ≤ 30 + bearish macro/BTC → mở short 2x
@@ -76,7 +77,10 @@ SHORT_CONVICTION_THRESHOLD = int(os.getenv("SHORT_CONVICTION_THRESHOLD", "30"))
 MAX_SHORT_POSITION_PCT = 0.05   # 5% equity max — SHORT is secondary to LONG
 
 # Alts có correlation cao với nhau → không long nhiều alt cùng lúc
-_ALT_PAIRS = frozenset({"ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"})
+_ALT_PAIRS = frozenset({
+    "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    "XRPUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT",
+})
 
 # Layer max scores — dùng cho attribution logging
 _LAYER_MAX = {

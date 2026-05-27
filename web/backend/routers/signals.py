@@ -8,7 +8,10 @@ from models import SignalLog
 
 router = APIRouter()
 
-WATCHLIST = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"]
+WATCHLIST = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    "XRPUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT",
+]
 
 # Must mirror engine/scorer.py LAYER_MAX
 LAYER_MAX = {
