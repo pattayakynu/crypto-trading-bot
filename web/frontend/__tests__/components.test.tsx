@@ -197,7 +197,7 @@ describe('EventFeed', () => {
   it('shows waiting message when no events', () => {
     (hooks.useWebSocket as jest.Mock).mockReturnValue([]);
     render(<EventFeed />);
-    expect(screen.getByText(/waiting for events/i)).toBeInTheDocument();
+    expect(screen.getByText(/Đang chờ sự kiện/i)).toBeInTheDocument();
   });
 
   it('renders event entries', () => {
@@ -205,7 +205,7 @@ describe('EventFeed', () => {
       { id: 0, type: 'trade.opened', raw: '{"event":"trade.opened"}', timestamp: '12:00:00' },
     ]);
     render(<EventFeed />);
-    expect(screen.getByText('[trade.opened]')).toBeInTheDocument();
+    expect(screen.getByText('{"event":"trade.opened"}')).toBeInTheDocument();
   });
 });
 
@@ -239,5 +239,66 @@ describe('PriceTickerBar', () => {
     });
     render(<PriceTickerBar />);
     expect(screen.getByText('—')).toBeInTheDocument();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+describe('NewsFeed', () => {
+  it('renders skeleton when loading', () => {
+    (hooks.useMarketNews as jest.Mock).mockReturnValue({ data: null, isLoading: true, error: null });
+    const { container } = render(<NewsFeed />);
+    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+  });
+
+  it('renders news items with title and source', () => {
+    (hooks.useMarketNews as jest.Mock).mockReturnValue({
+      data: [
+        {
+          title: 'Bitcoin ETF hits record inflows',
+          url: 'https://example.com/1',
+          source: 'CoinDesk',
+          published_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+          category: 'crypto',
+          importance: 'high',
+        },
+        {
+          title: 'Fed holds rates steady',
+          url: 'https://example.com/2',
+          source: 'Yahoo Finance',
+          published_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          category: 'macro',
+          importance: 'normal',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<NewsFeed />);
+    expect(screen.getByText('Bitcoin ETF hits record inflows')).toBeInTheDocument();
+    expect(screen.getByText('Fed holds rates steady')).toBeInTheDocument();
+    expect(screen.getByText(/CoinDesk/)).toBeInTheDocument();
+  });
+
+  it('shows error message when fetch fails', () => {
+    (hooks.useMarketNews as jest.Mock).mockReturnValue({
+      data: null, isLoading: false, error: new Error('fail'),
+    });
+    render(<NewsFeed />);
+    expect(screen.getByText(/Không tải được tin tức/)).toBeInTheDocument();
+  });
+
+  it('filters to crypto tab correctly', () => {
+    const { fireEvent } = require('@testing-library/react');
+    (hooks.useMarketNews as jest.Mock).mockReturnValue({
+      data: [
+        { title: 'Crypto news', url: '', source: 'CP', published_at: '', category: 'crypto', importance: 'normal' },
+        { title: 'Macro news',  url: '', source: 'YF', published_at: '', category: 'macro',  importance: 'normal' },
+      ],
+      isLoading: false, error: null,
+    });
+    render(<NewsFeed />);
+    fireEvent.click(screen.getByText('Crypto'));
+    expect(screen.getByText('Crypto news')).toBeInTheDocument();
+    expect(screen.queryByText('Macro news')).not.toBeInTheDocument();
   });
 });
