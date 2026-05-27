@@ -84,3 +84,65 @@ def test_result_has_all_keys():
     assert "disagreement_skipped" in result
     assert "claude" in result
     assert "deepseek" in result
+
+
+# ── SHORT dual-LLM tests ──────────────────────────────────────────────────────
+
+SHORT_RESPONSE = {
+    "signal": "SHORT",
+    "confidence": "HIGH",
+    "key_reason": "Funding reset + alt weakness",
+    "risk_flag": None,
+}
+
+SHORT_CONTEXT = dict(
+    symbol="ETHUSDT",
+    short_score=75,
+    signal_scores={
+        "alt_weakness": 25,
+        "funding_reset": 25,
+        "volume_exhaustion": 15,
+        "macro_bearish": 10,
+    },
+    regime="BEAR",
+    reasons=["alt_weakness=25", "funding_reset=25"],
+)
+
+
+def test_short_both_short_gives_short():
+    a = make_advisor()
+    result = a.analyze_short_with_mock(
+        **SHORT_CONTEXT, mock_claude=SHORT_RESPONSE, mock_deepseek=SHORT_RESPONSE
+    )
+    assert result["final_signal"] == "SHORT"
+    assert result["agreement"] is True
+    assert result["disagreement_skipped"] is False
+
+
+def test_short_disagreement_gives_skip():
+    a = make_advisor()
+    result = a.analyze_short_with_mock(
+        **SHORT_CONTEXT, mock_claude=SHORT_RESPONSE, mock_deepseek=SKIP_RESPONSE
+    )
+    assert result["final_signal"] == "SKIP"
+    assert result["disagreement_skipped"] is True
+
+
+def test_parse_short_signal():
+    a = make_advisor()
+    assert a._parse_short_signal({"signal": "SHORT"}) == "SHORT"
+    assert a._parse_short_signal({"signal": "short"}) == "SHORT"
+    assert a._parse_short_signal({"signal": "SKIP"}) == "SKIP"
+    assert a._parse_short_signal({}) == "SKIP"
+
+
+def test_short_result_has_all_keys():
+    a = make_advisor()
+    result = a.analyze_short_with_mock(
+        **SHORT_CONTEXT, mock_claude=SHORT_RESPONSE, mock_deepseek=SHORT_RESPONSE
+    )
+    assert "final_signal" in result
+    assert "agreement" in result
+    assert "disagreement_skipped" in result
+    assert "claude" in result
+    assert "deepseek" in result

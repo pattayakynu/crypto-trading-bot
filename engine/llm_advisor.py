@@ -148,6 +148,107 @@ class LlmAdvisor:
             "deepseek": deepseek_result,
         }
 
+    # ── SHORT dual-LLM analysis ───────────────────────────────────────────────
+
+    def _build_short_prompt(
+        self,
+        symbol: str,
+        short_score: int,
+        signal_scores: dict,
+        regime: str,
+        reasons: list[str],
+    ) -> str:
+        return f"""You are a crypto trading risk analyst evaluating a SHORT trade signal.
+
+Symbol: {symbol}
+Market Regime: {regime}
+Short Conviction Score: {short_score}/100
+
+Signal Breakdown:
+{json.dumps(signal_scores, indent=2)}
+
+Key Signals:
+{chr(10).join(f"- {r}" for r in reasons)}
+
+Should this SHORT position be taken?
+Respond in JSON only:
+{{
+  "signal": "SHORT" | "SKIP",
+  "confidence": "HIGH" | "MEDIUM" | "LOW",
+  "key_reason": "<one sentence>",
+  "risk_flag": "<main risk or null>"
+}}"""
+
+    def _parse_short_signal(self, response: dict) -> str:
+        """Extract normalized short signal: SHORT or SKIP."""
+        raw = response.get("signal", "SKIP").upper()
+        return "SHORT" if raw == "SHORT" else "SKIP"
+
+    def analyze_short(
+        self,
+        symbol: str,
+        short_score: int,
+        signal_scores: dict,
+        regime: str,
+        reasons: list[str],
+    ) -> dict:
+        """
+        Dual LLM analysis for SHORT signals — same disagreement protocol as analyze().
+        Both Claude AND DeepSeek must output "SHORT"; disagreement → SKIP.
+        """
+        prompt = self._build_short_prompt(symbol, short_score, signal_scores, regime, reasons)
+
+        claude_result = self._query_claude(prompt)
+        deepseek_result = self._query_deepseek(prompt)
+
+        claude_signal = self._parse_short_signal(claude_result)
+        deepseek_signal = self._parse_short_signal(deepseek_result)
+
+        agreement = claude_signal == deepseek_signal
+        disagreement_skipped = not agreement
+        final_signal = "SKIP" if disagreement_skipped else claude_signal
+
+        return {
+            "final_signal": final_signal,
+            "agreement": agreement,
+            "disagreement_skipped": disagreement_skipped,
+            "claude": claude_result,
+            "deepseek": deepseek_result,
+        }
+
+    def analyze_short_with_mock(
+        self,
+        symbol: str,
+        short_score: int,
+        signal_scores: dict,
+        regime: str,
+        reasons: list[str],
+        mock_claude: dict = None,
+        mock_deepseek: dict = None,
+    ) -> dict:
+        """Test-friendly version of analyze_short() using pre-canned LLM responses."""
+        claude_result = mock_claude or {
+            "signal": "SKIP", "confidence": "LOW", "key_reason": "mock", "risk_flag": None
+        }
+        deepseek_result = mock_deepseek or {
+            "signal": "SKIP", "confidence": "LOW", "key_reason": "mock", "risk_flag": None
+        }
+
+        claude_signal = self._parse_short_signal(claude_result)
+        deepseek_signal = self._parse_short_signal(deepseek_result)
+
+        agreement = claude_signal == deepseek_signal
+        disagreement_skipped = not agreement
+        final_signal = "SKIP" if disagreement_skipped else claude_signal
+
+        return {
+            "final_signal": final_signal,
+            "agreement": agreement,
+            "disagreement_skipped": disagreement_skipped,
+            "claude": claude_result,
+            "deepseek": deepseek_result,
+        }
+
     def analyze_with_mock(
         self,
         symbol: str,
