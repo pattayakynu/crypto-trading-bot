@@ -11,20 +11,20 @@ PRICE_CACHE_TTL = 30    # seconds
 NEWS_CACHE_TTL  = 300   # seconds
 
 
-def _build_proxy() -> dict | None:
-    """Parse BINANCE_PROXY env var (host:port:user:pass) into httpx proxy dict."""
+def _build_proxy() -> str | None:
+    """Return BINANCE_PROXY as a proxy URL string for httpx."""
     raw = os.getenv("BINANCE_PROXY", "").strip()
     if not raw:
         return None
+    # Already a full URL (http://user:pass@host:port)
+    if raw.startswith("http"):
+        return raw
+    # Legacy format: host:port:user:pass
     parts = raw.split(":")
     if len(parts) == 4:
         host, port, user, password = parts
-        url = f"http://{user}:{password}@{host}:{port}"
-    elif len(parts) == 2:
-        url = f"http://{raw}"
-    else:
-        return None
-    return {"http://": url, "https://": url}
+        return f"http://{user}:{password}@{host}:{port}"
+    return None
 
 _price_cache: dict = {"data": None, "ts": 0.0}
 _news_cache:  dict = {"data": None, "ts": 0.0}
@@ -51,7 +51,7 @@ def get_market_prices():
             "https://api.binance.com/api/v3/ticker/24hr",
             params={"symbols": symbols_json},
             timeout=8,
-            proxies=_build_proxy(),
+            proxy=_build_proxy(),
         )
         resp.raise_for_status()
         tickers = {t["symbol"]: t for t in resp.json()}
