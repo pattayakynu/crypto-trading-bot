@@ -116,6 +116,19 @@ export interface LayerInfo {
   label: string;
 }
 
+export interface ShortSignalInfo {
+  score: number;
+  max: number;
+  pct: number;
+  label: string;
+}
+
+export interface ShortSignal {
+  score: number;
+  regime: string;
+  signals: Record<string, ShortSignalInfo>;
+}
+
 export interface SignalScan {
   id: number;
   scanned_at: string | null;
@@ -123,6 +136,7 @@ export interface SignalScan {
   action: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   layers: Record<string, LayerInfo>;
+  short: ShortSignal | null;
 }
 
 export interface CoinSignal {
