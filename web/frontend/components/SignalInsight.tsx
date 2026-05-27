@@ -1,8 +1,16 @@
 'use client';
-import { useSignals, type CoinSignal, type SignalScan } from '@/lib/hooks';
+import { useSignals, type CoinSignal, type SignalScan, type ShortSignal } from '@/lib/hooks';
 
 // Layer display order (matches engine pipeline)
 const LAYER_ORDER = ['whale', 'macro', 'fiat_flow', 'btc_lead', 'ta', 'social'];
+
+const SHORT_SIGNAL_ORDER = ['alt_weakness', 'funding_reset', 'volume_exhaustion', 'macro_bearish'];
+
+function shortScoreColor(score: number): string {
+  if (score >= 65) return 'text-red-400';
+  if (score >= 40) return 'text-orange-400';
+  return 'text-gray-500';
+}
 
 function strengthBar(strength: string): string {
   if (strength === 'STRONG')   return 'bg-green-500';
@@ -93,6 +101,44 @@ function ScanCard({ scan, dim }: { scan: SignalScan; dim?: boolean }) {
           );
         })}
       </div>
+
+      {/* SHORT section — chỉ hiển thị khi có short data */}
+      {scan.short && (
+        <>
+          {/* Divider + SHORT header */}
+          <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
+            <span className="text-[9px] text-red-500 font-semibold">SHORT</span>
+            <span className={`text-[10px] font-bold tabular-nums ${shortScoreColor(scan.short.score)}`}>
+              {scan.short.score}/100
+            </span>
+            <span className="text-[9px] text-gray-600 ml-auto">{scan.short.regime}</span>
+          </div>
+
+          {/* 4 SHORT signal bars — đỏ thay vì xanh */}
+          <div className="space-y-1">
+            {SHORT_SIGNAL_ORDER.map(key => {
+              const sig = scan.short!.signals[key];
+              if (!sig) return null;
+              return (
+                <div key={key} className="flex items-center gap-1.5">
+                  <span className="text-gray-500 text-[9px] w-14 flex-shrink-0 truncate">
+                    {sig.label}
+                  </span>
+                  <div className="flex-1 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-red-600"
+                      style={{ width: `${sig.pct}%` }}
+                    />
+                  </div>
+                  <span className="text-gray-600 text-[9px] w-7 text-right flex-shrink-0 tabular-nums">
+                    {sig.score}/{sig.max}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
