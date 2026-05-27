@@ -78,3 +78,30 @@ export function useWebSocket(maxEvents = 50): BotEvent[] {
 
   return events;
 }
+
+// ── Market Prices ─────────────────────────────────────────────────────────────
+
+export interface CoinPrice {
+  symbol: string;
+  price: number | null;
+  change_pct_24h: number | null;
+}
+
+export function useMarketPrices() {
+  return useSWR<CoinPrice[]>('/api/market/prices', fetcher, { refreshInterval: 10_000 });
+}
+
+// ── Market News ───────────────────────────────────────────────────────────────
+
+export interface NewsItem {
+  title: string;
+  url: string;
+  source: string;
+  published_at: string;
+  category: 'crypto' | 'macro';
+  importance: 'normal' | 'high';
+}
+
+export function useMarketNews() {
+  return useSWR<NewsItem[]>('/api/market/news', fetcher, { refreshInterval: 300_000 });
+}
