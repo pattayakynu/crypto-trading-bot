@@ -1,6 +1,9 @@
 import os
 import time
+import logging
 import httpx
+
+log = logging.getLogger(__name__)
 
 # BTC move thresholds to qualify as a lead signal
 BTC_MOVE_STRONG = 2.0       # BTC > 2% in 1h = strong move
@@ -111,10 +114,13 @@ class BtcLeadSignal:
                 ticker = self.client.get_ticker(symbol="BTCUSDT")
                 value = float(ticker.get("priceChangePercent", 0))
                 if abs(value) > 0.01:   # sanity check — testnet sometimes returns 0
+                    log.info("BTC change from Binance: %.4f%%", value)
                     _btc_change_cache = {"value": value, "ts": now}
                     return value
-            except Exception:
-                pass
+                else:
+                    log.debug("Binance priceChangePercent too small (%.4f), trying CoinGecko", value)
+            except Exception as e:
+                log.debug("Binance get_ticker failed: %s", e)
 
         # ── CoinGecko fallback (no API key required) ─────────────────────────
         try:
@@ -129,13 +135,21 @@ class BtcLeadSignal:
             )
             if resp.status_code == 200:
                 value = float(resp.json().get("bitcoin", {}).get("usd_24h_change", 0))
+                log.info("BTC change from CoinGecko: %.4f%%", value)
                 _btc_change_cache = {"value": value, "ts": now}
                 return value
-        except Exception:
-            pass
+            else:
+                log.warning("CoinGecko returned HTTP %d", resp.status_code)
+        except Exception as e:
+            log.warning("CoinGecko fallback failed: %s", e)
 
         # Return last good value if available, else 0
-        return _btc_change_cache["value"] if _btc_change_cache["value"] is not None else 0.0
+        last = _btc_change_cache["value"]
+        if last is not None:
+            log.info("Using cached BTC change: %.4f%%", last)
+            return last
+        log.warning("All BTC change sources failed — returning 0.0")
+        return 0.0
 
     def get_btc_1h_change(self) -> float:
         """Fetch BTC 1h price change from Binance (legacy method, unused in main loop)."""
