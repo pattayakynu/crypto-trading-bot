@@ -105,3 +105,31 @@ export interface NewsItem {
 export function useMarketNews() {
   return useSWR<NewsItem[]>('/api/market/news', fetcher, { refreshInterval: 300_000 });
 }
+
+// ── Signal Insights ───────────────────────────────────────────────────────────
+
+export interface LayerInfo {
+  score: number;
+  max: number;
+  pct: number;
+  strength: 'STRONG' | 'MODERATE' | 'WEAK' | 'NONE';
+  label: string;
+}
+
+export interface SignalScan {
+  id: number;
+  scanned_at: string | null;
+  total_score: number;
+  action: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  layers: Record<string, LayerInfo>;
+}
+
+export interface CoinSignal {
+  pair: string;
+  scans: SignalScan[];
+}
+
+export function useSignals() {
+  return useSWR<CoinSignal[]>('/api/signals/latest', fetcher, { refreshInterval: 60_000 });
+}

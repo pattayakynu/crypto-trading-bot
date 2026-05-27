@@ -6,6 +6,7 @@ import PositionsList from '@/components/PositionsList';
 import EventFeed from '@/components/EventFeed';
 import PriceTickerBar from '@/components/PriceTickerBar';
 import NewsFeed from '@/components/NewsFeed';
+import SignalInsight from '@/components/SignalInsight';
 
 export default function DashboardPage() {
   return (
@@ -37,6 +38,9 @@ export default function DashboardPage() {
         <PositionsList />
         <EventFeed />
       </div>
+
+      {/* Bot Thought Stream — full width, below event feed */}
+      <SignalInsight />
     </div>
   );
 }

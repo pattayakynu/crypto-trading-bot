@@ -33,6 +33,7 @@ jest.mock('../lib/hooks', () => ({
   useWebSocket: jest.fn(() => []),
   useMarketPrices: jest.fn(),
   useMarketNews: jest.fn(),
+  useSignals: jest.fn(),
 }));
 
 import useSWR from 'swr';
@@ -47,6 +48,7 @@ import TradeHistory from '../components/TradeHistory';
 import EventFeed from '../components/EventFeed';
 import PriceTickerBar from '../components/PriceTickerBar';
 import NewsFeed from '../components/NewsFeed';
+import SignalInsight from '../components/SignalInsight';
 
 const mockUseSWR = useSWR as jest.Mock;
 
@@ -300,5 +302,101 @@ describe('NewsFeed', () => {
     fireEvent.click(screen.getByText('Crypto'));
     expect(screen.getByText('Crypto news')).toBeInTheDocument();
     expect(screen.queryByText('Macro news')).not.toBeInTheDocument();
+  });
+});
+
+// ── Helper: build a fake SignalScan ──────────────────────────────────────────
+function makeScan(id: number, score: number, action: string, confidence: 'HIGH' | 'MEDIUM' | 'LOW') {
+  return {
+    id,
+    scanned_at: new Date(Date.now() - id * 300_000).toISOString(),
+    total_score: score,
+    action,
+    confidence,
+    layers: {
+      whale:     { score: 15, max: 25, pct: 60, strength: 'MODERATE', label: 'Cá voi' },
+      macro:     { score: 18, max: 20, pct: 90, strength: 'STRONG',   label: 'Vĩ mô' },
+      fiat_flow: { score: 8,  max: 15, pct: 53, strength: 'MODERATE', label: 'Dòng tiền' },
+      btc_lead:  { score: 14, max: 20, pct: 70, strength: 'STRONG',   label: 'BTC dẫn' },
+      ta:        { score: 8,  max: 10, pct: 80, strength: 'STRONG',   label: 'Kỹ thuật' },
+      social:    { score: 4,  max: 10, pct: 40, strength: 'MODERATE', label: 'Cộng đồng' },
+    },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+describe('SignalInsight', () => {
+  it('renders skeleton when loading', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({ data: null, isLoading: true, error: null });
+    const { container } = render(<SignalInsight />);
+    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+  });
+
+  it('renders error state when fetch fails', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({ data: null, isLoading: false, error: new Error('fail') });
+    render(<SignalInsight />);
+    expect(screen.getByText(/Không tải được tín hiệu/)).toBeInTheDocument();
+  });
+
+  it('shows no-data message when all coins have zero scans', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({
+      data: [
+        { pair: 'BTCUSDT', scans: [] },
+        { pair: 'ETHUSDT', scans: [] },
+        { pair: 'BNBUSDT', scans: [] },
+        { pair: 'SOLUSDT', scans: [] },
+        { pair: 'ADAUSDT', scans: [] },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<SignalInsight />);
+    expect(screen.getByText(/Bot chưa scan/)).toBeInTheDocument();
+  });
+
+  it('renders coin rows with score and action for active coins', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({
+      data: [
+        { pair: 'BTCUSDT', scans: [makeScan(1, 67, 'BUY', 'MEDIUM'), makeScan(2, 60, 'BUY', 'MEDIUM')] },
+        { pair: 'ETHUSDT', scans: [] },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<SignalInsight />);
+    expect(screen.getByText('BTC')).toBeInTheDocument();
+    // Latest scan score
+    expect(screen.getByText('67')).toBeInTheDocument();
+    // Action badge appears at least once (both scans show BUY MEDIUM)
+    expect(screen.getAllByText('MUA MEDIUM').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows layer labels in scan cards', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({
+      data: [
+        { pair: 'BTCUSDT', scans: [makeScan(1, 67, 'BUY', 'MEDIUM')] },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<SignalInsight />);
+    expect(screen.getByText('Cá voi')).toBeInTheDocument();
+    expect(screen.getByText('Vĩ mô')).toBeInTheDocument();
+    expect(screen.getByText('Kỹ thuật')).toBeInTheDocument();
+  });
+
+  it('lists inactive coins in a footer note', () => {
+    (hooks.useSignals as jest.Mock).mockReturnValue({
+      data: [
+        { pair: 'BTCUSDT', scans: [makeScan(1, 67, 'BUY', 'MEDIUM')] },
+        { pair: 'ETHUSDT', scans: [] },
+        { pair: 'SOLUSDT', scans: [] },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<SignalInsight />);
+    expect(screen.getByText(/ETH/)).toBeInTheDocument();
+    expect(screen.getByText(/SOL/)).toBeInTheDocument();
   });
 });
