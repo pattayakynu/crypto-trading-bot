@@ -37,13 +37,11 @@ class MacroContext:
             return 0.0
 
     def fetch_dxy_change(self) -> float:
-        """Fetch DXY 1-day % change — dùng UUP ETF (Invesco DB US Dollar Index Bullish Fund)."""
-        # UUP bám sát DXY, liquid hơn và ticker ổn định hơn DX-Y.NYB
+        """Fetch DXY 1-day % change via UUP ETF (Invesco DB US Dollar Index Bullish Fund)."""
         return self._fetch_pct_change("UUP")
 
     def fetch_gold_change(self) -> float:
-        """Fetch Gold 1-day % change — dùng GLD ETF (SPDR Gold Shares)."""
-        # GLD bám sát giá vàng spot, ổn định hơn GC=F futures (tránh lỗi rollover)
+        """Fetch Gold 1-day % change via GLD ETF (SPDR Gold Shares)."""
         return self._fetch_pct_change("GLD")
 
     def score_dxy(self, dxy_change_pct: float) -> int:

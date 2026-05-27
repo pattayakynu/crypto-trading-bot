@@ -135,8 +135,7 @@ class AlertSubscriber:
                 log.error("Alert processing error: %s", exc)
 
     def _send_to_all(self, text: str):
-        # Dùng httpx sync thay vì run_coroutine_threadsafe — loop không run_forever nên
-        # coroutine sẽ không bao giờ được thực thi nếu dùng cách cũ.
+        # httpx sync: gọi Telegram REST API trực tiếp từ background thread.
         import httpx
         url = f"https://api.telegram.org/bot{self.bot.token}/sendMessage"
         for uid in self.allowed_ids:
