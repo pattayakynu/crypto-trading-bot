@@ -225,17 +225,11 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         pass
 
     # ── Tầng 6: Social ────────────────────────────────────────────────────
+    # Fear&Greed (alternative.me) + CoinGecko sentiment — không cần API key
+    # CryptoPanic / LunarCrush là bonus nếu có key
     social_score = 0
     try:
-        news = social.get_cryptopanic_news(pair)
-        lc = social.get_lunarcrush_data(pair)
-        social_score = social.total_score(
-            positive_count=news["positive"],
-            negative_count=news["negative"],
-            total_news=news["total"],
-            galaxy_score=lc["galaxy_score"],
-            social_volume_ratio=lc["social_volume_ratio"],
-        )
+        social_score = social.get_social_score(pair)
     except Exception:
         pass
 

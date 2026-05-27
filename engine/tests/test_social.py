@@ -89,3 +89,78 @@ def test_total_score_all_quiet_zero():
         galaxy_score=10.0, social_volume_ratio=1.0
     )
     assert score == 0
+
+
+# --- Fear & Greed scoring ---
+
+def test_fear_greed_extreme_greed():
+    s = make_signal()
+    assert s.score_fear_greed(80) == 5
+
+def test_fear_greed_greed():
+    s = make_signal()
+    assert s.score_fear_greed(65) == 4
+
+def test_fear_greed_neutral():
+    s = make_signal()
+    assert s.score_fear_greed(50) == 2
+
+def test_fear_greed_fear():
+    s = make_signal()
+    assert s.score_fear_greed(35) == 1
+
+def test_fear_greed_extreme_fear():
+    s = make_signal()
+    assert s.score_fear_greed(10) == 0
+
+def test_fear_greed_boundary_extreme_greed():
+    s = make_signal()
+    assert s.score_fear_greed(75) == 5
+
+def test_fear_greed_boundary_greed():
+    s = make_signal()
+    assert s.score_fear_greed(55) == 4
+
+
+# --- CoinGecko sentiment scoring ---
+
+def test_coingecko_bullish():
+    s = make_signal()
+    assert s.score_coingecko_sentiment(70.0) == 3
+
+def test_coingecko_neutral():
+    s = make_signal()
+    assert s.score_coingecko_sentiment(55.0) == 1
+
+def test_coingecko_bearish():
+    s = make_signal()
+    assert s.score_coingecko_sentiment(40.0) == 0
+
+def test_coingecko_exactly_at_bullish_threshold():
+    s = make_signal()
+    assert s.score_coingecko_sentiment(65.0) == 3
+
+
+# --- get_social_score orchestrator ---
+
+def test_get_social_score_no_keys_uses_fg_and_cg(monkeypatch):
+    """Không có API key vẫn có điểm từ Fear&Greed + CoinGecko."""
+    s = make_signal()
+    monkeypatch.setattr(s, "get_fear_greed_index", lambda: 72)      # Greed → 4 pts
+    monkeypatch.setattr(s, "get_coingecko_sentiment", lambda sym: 68.0)  # Bullish → 3 pts
+    score = s.get_social_score("BTCUSDT")
+    assert score == 7  # 4 + 3
+
+def test_get_social_score_capped_at_10(monkeypatch):
+    s = make_signal()
+    monkeypatch.setattr(s, "get_fear_greed_index", lambda: 90)      # 5 pts
+    monkeypatch.setattr(s, "get_coingecko_sentiment", lambda sym: 80.0)  # 3 pts
+    score = s.get_social_score("BTCUSDT")
+    assert score <= 10
+
+def test_get_social_score_extreme_fear(monkeypatch):
+    s = make_signal()
+    monkeypatch.setattr(s, "get_fear_greed_index", lambda: 10)      # 0 pts
+    monkeypatch.setattr(s, "get_coingecko_sentiment", lambda sym: 35.0)  # 0 pts
+    score = s.get_social_score("BTCUSDT")
+    assert score == 0
