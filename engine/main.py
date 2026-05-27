@@ -91,6 +91,19 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _short_confidence(score: int) -> str:
+    """
+    Map ShortBrain score to a confidence tier for TP sizing.
+    Mirrors the LONG conviction mapping but calibrated for SHORT's 65-point threshold.
+      score ≥ 85 → HIGH   → 8% TP (strong multi-signal confluence)
+      score ≥ 65 → MEDIUM → 5% TP (base threshold met)
+    A tighter TP on MEDIUM shorts also reduces time held → fewer funding payments.
+    """
+    if score >= 85:
+        return "HIGH"
+    return "MEDIUM"  # Any valid SHORT must be ≥ 65 to reach this code path
+
+
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 def bootstrap():
@@ -395,12 +408,16 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
 
     # ── Execute FUTURES SHORT ─────────────────────────────────────────────
     else:
-        # Futures short: tối đa 25% equity (nhỏ hơn spot vì có đòn bẩy 2x)
+        # Futures short: tối đa 5% equity (nhỏ hơn LONG vì rủi ro cao hơn)
         size = max(10.0, equity * MAX_SHORT_POSITION_PCT)
         qty = rm.calc_qty(size, current_price)
 
-        sl = rm.calc_stop_loss(current_price, side="SHORT")   # 5% trên entry
-        tp = rm.calc_take_profit(current_price, "MEDIUM", side="SHORT")  # 5% dưới entry
+        # TP động theo ShortBrain score:
+        #   score ≥ 85 (HIGH)   → 8% TP — tín hiệu mạnh, để lợi nhuận chạy
+        #   score 65-84 (MEDIUM) → 5% TP — base, thoát sớm để tránh funding fees
+        short_conf = _short_confidence(short_signal.score)
+        sl = rm.calc_stop_loss(current_price, side="SHORT")
+        tp = rm.calc_take_profit(current_price, short_conf, side="SHORT")
 
         result = services["executor"].short_futures(pair, qty, leverage=1)
         if not result.success:
@@ -413,7 +430,7 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             entry_price=fill_price, qty=result.qty,
             usdt_value=fill_price * result.qty,
             stop_loss=rm.calc_stop_loss(fill_price, "SHORT"),
-            take_profit=rm.calc_take_profit(fill_price, "MEDIUM", "SHORT"),
+            take_profit=rm.calc_take_profit(fill_price, short_conf, "SHORT"),
             trailing_stop_active=False, highest_price=fill_price,
             conviction_score=short_signal.score,
         )
@@ -427,9 +444,12 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             stop_loss=position.stop_loss, take_profit=position.take_profit,
             conviction_score=short_signal.score,
         )
-        log.info("[%s] SHORT OPENED (FUTURES 1x): qty=%.6f @ %.4f | SL=%.4f TP=%.4f | ShortBrain=%d/100 regime=%s",
-                 pair, result.qty, fill_price, position.stop_loss, position.take_profit,
-                 short_signal.score, short_signal.regime)
+        log.info(
+            "[%s] SHORT OPENED (FUTURES 1x): qty=%.6f @ %.4f | SL=%.4f TP=%.4f"
+            " | ShortBrain=%d/100 conf=%s regime=%s",
+            pair, result.qty, fill_price, position.stop_loss, position.take_profit,
+            short_signal.score, short_conf, short_signal.regime,
+        )
         return {"pair": pair, "action": "SHORT_OPENED", "price": fill_price, "qty": result.qty}
 
 

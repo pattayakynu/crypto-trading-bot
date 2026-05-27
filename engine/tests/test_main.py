@@ -13,6 +13,7 @@ from main import (
     _get_equity,
     _close_position,
     monitor_positions,
+    _short_confidence,
     INITIAL_CAPITAL,
 )
 
@@ -194,3 +195,32 @@ def test_monitor_triggers_stop_loss(session):
     assert session.query(Position).count() == 0
     trade = session.query(Trade).first()
     assert trade.pnl < 0  # Loss
+
+
+# ── _short_confidence ────────────────────────────────────────────────────────
+
+def test_short_confidence_high_above_85():
+    assert _short_confidence(85) == "HIGH"
+    assert _short_confidence(90) == "HIGH"
+    assert _short_confidence(100) == "HIGH"
+
+
+def test_short_confidence_medium_between_65_and_84():
+    assert _short_confidence(65) == "MEDIUM"
+    assert _short_confidence(75) == "MEDIUM"
+    assert _short_confidence(84) == "MEDIUM"
+
+
+def test_short_confidence_medium_at_exact_threshold():
+    # score 65 = minimum valid SHORT — maps to MEDIUM (5% TP)
+    assert _short_confidence(65) == "MEDIUM"
+
+
+def test_short_confidence_high_tp_wider_than_medium():
+    """HIGH conf SHORT should give tighter (lower) TP price than MEDIUM."""
+    from risk import RiskManager
+    rm = RiskManager(equity=100.0)
+    tp_high   = rm.calc_take_profit(100.0, "HIGH",   side="SHORT")  # 8% below
+    tp_medium = rm.calc_take_profit(100.0, "MEDIUM", side="SHORT")  # 5% below
+    # For SHORT: lower TP price = larger profit target
+    assert tp_high < tp_medium
