@@ -31,6 +31,8 @@ jest.mock('../lib/hooks', () => ({
   useTrades: jest.fn(),
   useBotStatus: jest.fn(),
   useWebSocket: jest.fn(() => []),
+  useMarketPrices: jest.fn(),
+  useMarketNews: jest.fn(),
 }));
 
 import useSWR from 'swr';
@@ -43,6 +45,8 @@ import EquityChart from '../components/EquityChart';
 import PositionsList from '../components/PositionsList';
 import TradeHistory from '../components/TradeHistory';
 import EventFeed from '../components/EventFeed';
+import PriceTickerBar from '../components/PriceTickerBar';
+import NewsFeed from '../components/NewsFeed';
 
 const mockUseSWR = useSWR as jest.Mock;
 
@@ -202,5 +206,38 @@ describe('EventFeed', () => {
     ]);
     render(<EventFeed />);
     expect(screen.getByText('[trade.opened]')).toBeInTheDocument();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+describe('PriceTickerBar', () => {
+  it('renders skeleton when loading', () => {
+    (hooks.useMarketPrices as jest.Mock).mockReturnValue({ data: null, isLoading: true });
+    const { container } = render(<PriceTickerBar />);
+    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+  });
+
+  it('renders coin prices with green color for positive change', () => {
+    (hooks.useMarketPrices as jest.Mock).mockReturnValue({
+      data: [
+        { symbol: 'BTC', price: 67420, change_pct_24h: 1.24 },
+        { symbol: 'ETH', price: 3210,  change_pct_24h: -0.87 },
+      ],
+      isLoading: false,
+    });
+    render(<PriceTickerBar />);
+    expect(screen.getByText('BTC')).toBeInTheDocument();
+    expect(screen.getByText('ETH')).toBeInTheDocument();
+    expect(screen.getByText(/1\.24%/)).toBeInTheDocument();
+    expect(screen.getByText(/0\.87%/)).toBeInTheDocument();
+  });
+
+  it('renders em-dash when price is null', () => {
+    (hooks.useMarketPrices as jest.Mock).mockReturnValue({
+      data: [{ symbol: 'BTC', price: null, change_pct_24h: null }],
+      isLoading: false,
+    });
+    render(<PriceTickerBar />);
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 });
