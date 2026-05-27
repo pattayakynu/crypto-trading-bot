@@ -72,10 +72,31 @@ class SignalLog(Base):
     layer_scores = Column(String, nullable=True)
     action = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # ShortBrain fields — nullable for backward compatibility (old rows = NULL)
+    short_total_score = Column(Integer, nullable=True)
+    short_regime      = Column(String,  nullable=True)
+    short_scores      = Column(String,  nullable=True)  # JSON string
 
 
 def get_engine():
     return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+def _migrate_signal_log(engine):
+    """Add short_* columns to signal_log if they don't exist yet (idempotent)."""
+    from sqlalchemy import text, inspect as sa_inspect
+    inspector = sa_inspect(engine)
+    existing = {c["name"] for c in inspector.get_columns("signal_log")}
+    migrations = [
+        ("short_total_score", "INTEGER"),
+        ("short_regime",      "TEXT"),
+        ("short_scores",      "TEXT"),
+    ]
+    with engine.connect() as conn:
+        for col_name, col_type in migrations:
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE signal_log ADD COLUMN {col_name} {col_type}"))
+        conn.commit()
 
 
 def init_db(engine):
@@ -85,3 +106,5 @@ def init_db(engine):
             for name in ["whale", "macro", "fiat_flow", "btc_lead", "ta", "social"]:
                 session.add(LayerWeight(name=name, weight=1.0))
             session.commit()
+    # Migrate existing signal_log table — add short columns if missing
+    _migrate_signal_log(engine)

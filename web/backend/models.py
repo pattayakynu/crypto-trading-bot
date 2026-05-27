@@ -76,6 +76,10 @@ class SignalLog(Base):
     layer_scores = Column(String, nullable=True)
     action = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # ShortBrain fields — nullable for backward compatibility (old rows = NULL)
+    short_total_score = Column(Integer, nullable=True)
+    short_regime      = Column(String,  nullable=True)
+    short_scores      = Column(String,  nullable=True)  # JSON string
 
 
 def get_engine():
