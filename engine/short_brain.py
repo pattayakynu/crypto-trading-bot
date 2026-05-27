@@ -230,6 +230,7 @@ class ShortBrain:
 
         # ── Hard filter 1: Never short in a BULL market ────────────────────────
         if regime == MarketRegime.BULL:
+            log.info("[ShortBrain] %s BLOCKED — BULL regime", symbol)
             return ShortSignal(
                 score=0,
                 should_short=False,
@@ -288,7 +289,7 @@ class ShortBrain:
         if s_macro > 0:
             reasons.append(f"macro_bearish={s_macro}")
 
-        return ShortSignal(
+        sig = ShortSignal(
             score=total,
             should_short=total >= SHORT_THRESHOLD,
             regime=regime,
@@ -296,3 +297,9 @@ class ShortBrain:
             blocked_reason=None,
             signal_scores=signal_scores,
         )
+        log.info(
+            "[ShortBrain] %s score=%d/100 regime=%s alt=%d fund=%d vol=%d macro=%d %s",
+            symbol, total, regime, s_alt, s_fund, s_vol, s_macro,
+            "→ SHORT" if sig.should_short else "→ SKIP",
+        )
+        return sig
