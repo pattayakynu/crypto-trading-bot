@@ -1,0 +1,84 @@
+import logging
+import time
+import httpx
+import yfinance as yf
+
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("peewee").setLevel(logging.CRITICAL)
+
+log = logging.getLogger(__name__)
+
+BTC_BULL_THRESHOLD = 5.0    # BTC 7d > +5% = weekly uptrend
+BTC_BEAR_THRESHOLD = -5.0   # BTC 7d < -5% = weekly downtrend
+DXY_BEAR_THRESHOLD = 1.5    # UUP 10d > +1.5% = strong dollar = crypto headwind
+
+_regime_cache: dict = {"value": None, "ts": 0.0}
+_REGIME_TTL = 3600  # Regime changes slowly — cache 1 hour
+
+
+class MarketRegime:
+    BULL = "BULL"
+    BEAR = "BEAR"
+    SIDEWAYS = "SIDEWAYS"
+
+
+class RegimeDetector:
+    def __init__(self, client=None):
+        self.client = client
+
+    def get_btc_7d_change(self) -> float:
+        """BTC 7-day price change % from CoinGecko (no API key needed)."""
+        try:
+            resp = httpx.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={
+                    "ids": "bitcoin",
+                    "vs_currencies": "usd",
+                    "include_7d_change": "true",
+                },
+                timeout=6.0,
+            )
+            if resp.status_code == 200:
+                return float(resp.json().get("bitcoin", {}).get("usd_7d_change", 0))
+        except Exception as e:
+            log.debug("CoinGecko 7d change failed: %s", e)
+        return 0.0
+
+    def get_dxy_10d_change(self) -> float:
+        """UUP 10-day % change via yfinance (same source as macro.py)."""
+        try:
+            hist = yf.Ticker("UUP").history(period="15d")
+            if len(hist) < 10:
+                return 0.0
+            prev = float(hist["Close"].iloc[-10])
+            curr = float(hist["Close"].iloc[-1])
+            return (curr - prev) / prev * 100 if prev != 0 else 0.0
+        except Exception as e:
+            log.debug("yfinance UUP 10d failed: %s", e)
+        return 0.0
+
+    def detect(self) -> str:
+        """
+        BULL:     BTC 7d >= +5% AND DXY 10d < +1.5%
+        BEAR:     BTC 7d <= -5% OR DXY 10d >= +1.5%
+        SIDEWAYS: everything else
+        Result cached for 1 hour.
+        """
+        global _regime_cache
+        now = time.time()
+        if _regime_cache["value"] is not None and now - _regime_cache["ts"] < _REGIME_TTL:
+            return _regime_cache["value"]
+
+        btc_7d = self.get_btc_7d_change()
+        dxy_10d = self.get_dxy_10d_change()
+
+        if btc_7d >= BTC_BULL_THRESHOLD and dxy_10d < DXY_BEAR_THRESHOLD:
+            regime = MarketRegime.BULL
+        elif btc_7d <= BTC_BEAR_THRESHOLD or dxy_10d >= DXY_BEAR_THRESHOLD:
+            regime = MarketRegime.BEAR
+        else:
+            regime = MarketRegime.SIDEWAYS
+
+        log.info("Market regime: %s (BTC 7d=%.1f%%, DXY 10d=%.2f%%)", regime, btc_7d, dxy_10d)
+        _regime_cache = {"value": regime, "ts": now}
+        return regime
