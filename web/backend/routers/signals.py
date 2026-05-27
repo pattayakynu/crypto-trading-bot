@@ -29,6 +29,22 @@ LAYER_LABELS = {
     "social":    "Cộng đồng",
 }
 
+SHORT_SIGNAL_MAX = {
+    "alt_weakness":      25,
+    "funding_reset":     25,
+    "volume_exhaustion": 25,
+    "macro_bearish":     25,
+}
+
+SHORT_SIGNAL_LABELS = {
+    "alt_weakness":      "Alt yếu",
+    "funding_reset":     "Funding reset",
+    "volume_exhaustion": "Vol cạn kiệt",
+    "macro_bearish":     "Vĩ mô giảm",
+}
+
+SHORT_SIGNAL_ORDER = ["alt_weakness", "funding_reset", "volume_exhaustion", "macro_bearish"]
+
 MIN_CONVICTION  = 55
 HIGH_CONVICTION = 75
 
@@ -96,6 +112,30 @@ def get_latest_signals():
                 if row.created_at:
                     scanned_at = row.created_at.isoformat() + "Z"
 
+                # Build short field — null for old rows without ShortBrain data
+                short = None
+                if row.short_scores is not None:
+                    try:
+                        short_raw = json.loads(row.short_scores)
+                        short_signals = {}
+                        for key in SHORT_SIGNAL_ORDER:
+                            score = int(short_raw.get(key, 0))
+                            max_s = SHORT_SIGNAL_MAX[key]
+                            pct   = round(score / max_s * 100) if max_s else 0
+                            short_signals[key] = {
+                                "score": score,
+                                "max":   max_s,
+                                "pct":   pct,
+                                "label": SHORT_SIGNAL_LABELS[key],
+                            }
+                        short = {
+                            "score":   row.short_total_score or 0,
+                            "regime":  row.short_regime or "",
+                            "signals": short_signals,
+                        }
+                    except Exception:
+                        short = None
+
                 scans.append({
                     "id":          row.id,
                     "scanned_at":  scanned_at,
@@ -103,6 +143,7 @@ def get_latest_signals():
                     "action":      row.action or "SKIP",
                     "confidence":  _confidence(row.total_score),
                     "layers":      layers,
+                    "short":       short,
                 })
 
             result.append({"pair": pair, "scans": scans})

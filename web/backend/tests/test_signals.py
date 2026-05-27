@@ -22,6 +22,9 @@ def _mock_row(
     layer_scores: str,
     action: str,
     created_at=None,
+    short_total_score=None,
+    short_regime=None,
+    short_scores=None,
 ):
     row = MagicMock()
     row.id = id
@@ -30,6 +33,9 @@ def _mock_row(
     row.layer_scores = layer_scores
     row.action = action
     row.created_at = created_at or datetime(2026, 5, 27, 10, 0, 0)
+    row.short_total_score = short_total_score
+    row.short_regime = short_regime
+    row.short_scores = short_scores
     return row
 
 
@@ -180,3 +186,117 @@ def test_confidence_bands():
     assert _confidence(55) == "MEDIUM"  # exactly at MIN_CONVICTION
     assert _confidence(54) == "LOW"
     assert _confidence(0)  == "LOW"
+
+
+# ── SHORT signal field ────────────────────────────────────────────────────────
+
+def test_signals_short_null_when_no_short_data():
+    """Rows cũ (short_scores=None) → short: null trong response."""
+    row = _mock_row(10, "BTCUSDT", 60, '{}', "BUY",
+                    short_total_score=None, short_regime=None, short_scores=None)
+    client = _get_client()
+    with patch("routers.signals.get_session") as mock_fn:
+        session = MagicMock()
+        mock_fn.return_value = session
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [row]
+        resp = client.get("/api/signals/latest", headers=HEADERS)
+    btc = next(d for d in resp.json() if d["pair"] == "BTCUSDT")
+    assert btc["scans"][0]["short"] is None
+
+
+def test_signals_short_populated_when_present():
+    """Rows mới có short data → short field đúng cấu trúc."""
+    import json
+    scores_json = json.dumps({
+        "alt_weakness": 0,
+        "funding_reset": 0,
+        "volume_exhaustion": 15,
+        "macro_bearish": 0,
+    })
+    row = _mock_row(11, "SOLUSDT", 45, '{}', "SKIP",
+                    short_total_score=15, short_regime="SIDEWAYS",
+                    short_scores=scores_json)
+    client = _get_client()
+    with patch("routers.signals.get_session") as mock_fn:
+        session = MagicMock()
+        mock_fn.return_value = session
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [row]
+        resp = client.get("/api/signals/latest", headers=HEADERS)
+    sol = next(d for d in resp.json() if d["pair"] == "SOLUSDT")
+    short = sol["scans"][0]["short"]
+    assert short is not None
+    assert short["score"] == 15
+    assert short["regime"] == "SIDEWAYS"
+    assert "signals" in short
+
+
+def test_signals_short_signals_shape():
+    """short.signals có đủ 4 keys, mỗi key có score/max/pct/label."""
+    import json
+    scores_json = json.dumps({
+        "alt_weakness": 0,
+        "funding_reset": 25,
+        "volume_exhaustion": 15,
+        "macro_bearish": 0,
+    })
+    row = _mock_row(12, "ETHUSDT", 50, '{}', "WATCH",
+                    short_total_score=40, short_regime="BEAR",
+                    short_scores=scores_json)
+    client = _get_client()
+    with patch("routers.signals.get_session") as mock_fn:
+        session = MagicMock()
+        mock_fn.return_value = session
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [row]
+        resp = client.get("/api/signals/latest", headers=HEADERS)
+    eth = next(d for d in resp.json() if d["pair"] == "ETHUSDT")
+    signals = eth["scans"][0]["short"]["signals"]
+    for key in ("alt_weakness", "funding_reset", "volume_exhaustion", "macro_bearish"):
+        assert key in signals
+        sig = signals[key]
+        assert "score" in sig
+        assert "max" in sig
+        assert "pct" in sig
+        assert "label" in sig
+
+    assert signals["funding_reset"]["score"] == 25
+    assert signals["funding_reset"]["max"] == 25
+    assert signals["funding_reset"]["pct"] == 100
+
+
+def test_signals_short_pct_calculation():
+    """pct = round(score / max * 100)"""
+    import json
+    scores_json = json.dumps({
+        "alt_weakness": 15,
+        "funding_reset": 0,
+        "volume_exhaustion": 0,
+        "macro_bearish": 0,
+    })
+    row = _mock_row(13, "BNBUSDT", 40, '{}', "SKIP",
+                    short_total_score=15, short_regime="SIDEWAYS",
+                    short_scores=scores_json)
+    client = _get_client()
+    with patch("routers.signals.get_session") as mock_fn:
+        session = MagicMock()
+        mock_fn.return_value = session
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [row]
+        resp = client.get("/api/signals/latest", headers=HEADERS)
+    bnb = next(d for d in resp.json() if d["pair"] == "BNBUSDT")
+    signals = bnb["scans"][0]["short"]["signals"]
+    # 15/25 = 60%
+    assert signals["alt_weakness"]["pct"] == 60
+
+
+def test_signals_short_malformed_json_returns_null():
+    """short_scores JSON bị corrupt → short: null, không crash."""
+    row = _mock_row(14, "ADAUSDT", 35, '{}', "SKIP",
+                    short_total_score=10, short_regime="SIDEWAYS",
+                    short_scores="NOT_VALID_JSON{{{")
+    client = _get_client()
+    with patch("routers.signals.get_session") as mock_fn:
+        session = MagicMock()
+        mock_fn.return_value = session
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [row]
+        resp = client.get("/api/signals/latest", headers=HEADERS)
+    ada = next(d for d in resp.json() if d["pair"] == "ADAUSDT")
+    assert ada["scans"][0]["short"] is None
