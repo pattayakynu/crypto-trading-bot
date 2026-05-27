@@ -30,6 +30,7 @@ def verify_api_key(x_api_key: str = Header(None)):
 # Import and register routers
 from routers import balance, trades, positions, performance, config as config_router
 from routers import bot as bot_router
+from routers import market as market_router
 
 _protected = {"dependencies": [Depends(verify_api_key)]}
 
@@ -39,6 +40,7 @@ app.include_router(positions.router,     prefix="/api", **_protected)
 app.include_router(performance.router,   prefix="/api", **_protected)
 app.include_router(bot_router.router,    prefix="/api", **_protected)
 app.include_router(config_router.router, prefix="/api", **_protected)
+app.include_router(market_router.router, prefix="/api", **_protected)
 
 # WebSocket is registered separately without API-key auth because browsers
 # cannot send custom headers on WebSocket upgrade requests.
