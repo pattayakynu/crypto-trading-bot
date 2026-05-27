@@ -38,6 +38,7 @@ from whale_tracker import WhaleTracker
 from macro import MacroContext
 from fiat_flow import FiatFlowTracker
 from btc_lead import BtcLeadSignal
+from short_brain import ShortBrain
 from strategy import TaStrategy
 from social import SocialSignal
 from scorer import ConvictionScorer, LayerScores
@@ -71,7 +72,7 @@ WATCHLIST = [
 # Futures SHORT threshold: score ≤ 30 + bearish macro/BTC → mở short 2x
 SHORT_CONVICTION_THRESHOLD = int(os.getenv("SHORT_CONVICTION_THRESHOLD", "30"))
 # Max % equity cho futures short (nhỏ hơn spot vì dùng đòn bẩy)
-MAX_SHORT_POSITION_PCT = 0.25
+MAX_SHORT_POSITION_PCT = 0.05   # 5% equity max — SHORT is secondary to LONG
 
 
 def _now():
@@ -117,6 +118,7 @@ def bootstrap():
         "macro": MacroContext(),
         "fiat_flow": FiatFlowTracker(),
         "btc_lead": BtcLeadSignal(client=client),
+        "short_brain": ShortBrain(client=client),
         "strategy": TaStrategy(),
         "social": SocialSignal(),
         "llm": LlmAdvisor(),
@@ -263,21 +265,24 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     log.info("[%s] Score=%d action=%s confidence=%s",
              pair, conviction.total_score, conviction.action, conviction.confidence)
 
-    # ── Xác định hướng giao dịch ─────────────────────────────────────────
-    # SHORT: score thấp + macro bearish + BTC dẫn xuống + TA bearish
-    is_bearish_short = (
-        conviction.total_score <= SHORT_CONVICTION_THRESHOLD
-        and btc_lead_score <= 3    # BTC đang dẫn xuống (max 20)
-        and macro_score <= 5       # Macro bearish: DXY tăng (max 20)
-        and ta_score <= 3          # TA bearish: RSI cao, MACD giảm (max 10)
+    # ── SHORT brain evaluation ────────────────────────────────────────────
+    short_brain: ShortBrain = services["short_brain"]
+    has_open_long = (
+        session.query(Position).filter_by(pair=pair, side="LONG").count() > 0
+    )
+    short_signal = short_brain.get_short_signal(
+        symbol=pair,
+        btc_change=btc_change,
+        alt_change=price_change,
+        has_open_long=has_open_long,
     )
 
-    if not conviction.should_trade and not is_bearish_short:
+    if not conviction.should_trade and not short_signal.should_short:
         return {"pair": pair, "action": conviction.action, "score": conviction.total_score}
 
     trade_side = "LONG" if conviction.should_trade else "SHORT"
 
-    # ── LLM Dual Analysis (chỉ cho LONG — SHORT dùng rule-based) ─────────
+    # ── LLM Dual Analysis — cả LONG lẫn SHORT đều cần confirm ────────────
     if trade_side == "LONG":
         llm_result = llm.analyze(
             symbol=pair,
@@ -287,8 +292,19 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             reasons=conviction.reasons,
         )
         if llm_result["disagreement_skipped"]:
-            log.info("[%s] SKIP — LLM disagreement", pair)
+            log.info("[%s] SKIP — LLM disagreement (LONG)", pair)
             return {"pair": pair, "action": "SKIP_LLM_DISAGREEMENT", "score": conviction.total_score}
+    else:
+        llm_result = llm.analyze_short(
+            symbol=pair,
+            short_score=short_signal.score,
+            signal_scores=short_signal.signal_scores,
+            regime=short_signal.regime,
+            reasons=short_signal.reasons,
+        )
+        if llm_result["disagreement_skipped"] or llm_result["final_signal"] != "SHORT":
+            log.info("[%s] SKIP — LLM disagreement (SHORT)", pair)
+            return {"pair": pair, "action": "SKIP_LLM_DISAGREEMENT_SHORT", "score": short_signal.score}
 
     # ── Position Limit ────────────────────────────────────────────────────
     equity = _get_equity(session)
@@ -349,13 +365,13 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     # ── Execute FUTURES SHORT ─────────────────────────────────────────────
     else:
         # Futures short: tối đa 25% equity (nhỏ hơn spot vì có đòn bẩy 2x)
-        size = max(10.0, min(equity * MAX_SHORT_POSITION_PCT, equity * MAX_SHORT_POSITION_PCT))
+        size = max(10.0, equity * MAX_SHORT_POSITION_PCT)
         qty = rm.calc_qty(size, current_price)
 
         sl = rm.calc_stop_loss(current_price, side="SHORT")   # 5% trên entry
         tp = rm.calc_take_profit(current_price, "MEDIUM", side="SHORT")  # 5% dưới entry
 
-        result = services["executor"].short_futures(pair, qty, leverage=2)
+        result = services["executor"].short_futures(pair, qty, leverage=1)
         if not result.success:
             log.error("[%s] SHORT FAILED: %s", pair, result.error)
             return {"pair": pair, "action": "EXEC_FAILED", "error": result.error}
@@ -368,7 +384,7 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             stop_loss=rm.calc_stop_loss(fill_price, "SHORT"),
             take_profit=rm.calc_take_profit(fill_price, "MEDIUM", "SHORT"),
             trailing_stop_active=False, highest_price=fill_price,
-            conviction_score=conviction.total_score,
+            conviction_score=short_signal.score,
         )
         session.add(position)
         session.commit()
@@ -378,10 +394,11 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             entry_price=fill_price, qty=result.qty,
             usdt_value=fill_price * result.qty,
             stop_loss=position.stop_loss, take_profit=position.take_profit,
-            conviction_score=conviction.total_score,
+            conviction_score=short_signal.score,
         )
-        log.info("[%s] SHORT OPENED (FUTURES 2x): qty=%.6f @ %.4f | SL=%.4f TP=%.4f",
-                 pair, result.qty, fill_price, position.stop_loss, position.take_profit)
+        log.info("[%s] SHORT OPENED (FUTURES 1x): qty=%.6f @ %.4f | SL=%.4f TP=%.4f | ShortBrain=%d/100 regime=%s",
+                 pair, result.qty, fill_price, position.stop_loss, position.take_profit,
+                 short_signal.score, short_signal.regime)
         return {"pair": pair, "action": "SHORT_OPENED", "price": fill_price, "qty": result.qty}
 
 
