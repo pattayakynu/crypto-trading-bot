@@ -32,7 +32,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import sessionmaker
 
 # Internal modules
-from db import get_engine, init_db, Position, Trade, SignalLog
+from db import get_engine, init_db, Position, Trade, SignalLog, SignalAttribution
 from manipulator import ManipulationFilter, ManipulationResult
 from whale_tracker import WhaleTracker
 from macro import MacroContext
@@ -78,6 +78,17 @@ MAX_SHORT_POSITION_PCT = 0.05   # 5% equity max — SHORT is secondary to LONG
 # Alts có correlation cao với nhau → không long nhiều alt cùng lúc
 _ALT_PAIRS = frozenset({"ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"})
 
+# Layer max scores — dùng cho attribution logging
+_LAYER_MAX = {
+    "whale": 25, "macro": 20, "fiat_flow": 15,
+    "btc_lead": 20, "ta": 10, "social": 10,
+}
+
+# Funding settlement blocks: tránh mở SHORT trong 2h trước mỗi settlement
+# Binance futures funding: 00:00 / 08:00 / 16:00 UTC
+_FUNDING_SETTLEMENT_HOURS = frozenset({0, 8, 16})
+_FUNDING_BUFFER_HOURS = 2   # block 2h trước settlement
+
 # Tiered LONG position sizing theo conviction score (thay vì flat 40-50%)
 # Giới hạn nhỏ hơn để tránh ruin với capital nhỏ
 _LONG_POSITION_TIERS = [
@@ -102,6 +113,65 @@ def _short_confidence(score: int) -> str:
     if score >= 85:
         return "HIGH"
     return "MEDIUM"  # Any valid SHORT must be ≥ 65 to reach this code path
+
+
+def _is_near_funding_settlement(dt: datetime, buffer_hours: int = _FUNDING_BUFFER_HOURS) -> bool:
+    """
+    Return True nếu thời điểm dt nằm trong buffer_hours TRƯỚC một funding settlement
+    (00:00, 08:00, 16:00 UTC). Lúc này volatility tăng vọt do traders điều chỉnh vị thế
+    → block mở lệnh SHORT mới để tránh bị quét.
+    """
+    frac_hour = dt.hour + dt.minute / 60.0
+    for sh in _FUNDING_SETTLEMENT_HOURS:
+        hours_until = (sh - frac_hour) % 24
+        if hours_until < buffer_hours:
+            return True
+    return False
+
+
+def _check_spread(client, pair: str, max_spread_pct: float = 0.15) -> tuple:
+    """
+    Kiểm tra bid-ask spread từ orderbook.
+    Trả về (ok: bool, spread_pct: float).
+    Nếu spread > max_spread_pct thì bỏ qua scan (thị trường thanh khoản mỏng).
+    Fail-open: nếu API lỗi → cho phép tiếp tục.
+    """
+    if not client:
+        return True, 0.0
+    try:
+        ob = client.get_order_book(symbol=pair, limit=5)
+        bids = ob.get("bids", [])
+        asks = ob.get("asks", [])
+        if not bids or not asks:
+            return True, 0.0
+        best_bid = float(bids[0][0])
+        best_ask = float(asks[0][0])
+        spread_pct = (best_ask - best_bid) / best_bid * 100 if best_bid > 0 else 0.0
+        return spread_pct <= max_spread_pct, round(spread_pct, 4)
+    except Exception as e:
+        log.debug("[%s] Spread check failed: %s", pair, e)
+        return True, 0.0  # Fail-open — không block vì lỗi API
+
+
+def _log_attribution(session, trade, layer_scores: dict, entry_value: float) -> None:
+    """
+    Ghi per-layer attribution sau khi đóng trade.
+    Sau 30+ trades có thể query để biết tầng nào thực sự sinh lời.
+    """
+    total = sum(layer_scores.values())
+    pnl_pct = round(trade.pnl / entry_value * 100, 4) if entry_value > 0 else 0.0
+    for name, score in layer_scores.items():
+        session.add(SignalAttribution(
+            trade_id=trade.id,
+            pair=trade.pair,
+            layer_name=name,
+            layer_score=int(score),
+            layer_max=_LAYER_MAX.get(name, 25),
+            total_score=total,
+            pnl=trade.pnl,
+            pnl_pct=pnl_pct,
+        ))
+    session.commit()
 
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -194,6 +264,13 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     if manip_result == ManipulationResult.FAKE_PUMP:
         log.info("[%s] SKIP — FAKE_PUMP detected (BTC futures-driven)", pair)
         return {"pair": pair, "action": "SKIP_FAKE_PUMP"}
+
+    # ── Spread / Liquidity check ───────────────────────────────────────────
+    # Bỏ qua nếu bid-ask spread quá rộng (thanh khoản mỏng, TA không đáng tin)
+    ok_spread, spread_pct = _check_spread(client, pair)
+    if not ok_spread:
+        log.info("[%s] SKIP — spread too wide (%.3f%% > 0.15%%)", pair, spread_pct)
+        return {"pair": pair, "action": "SKIP_SPREAD"}
 
     # ── Tầng 1: Whale ─────────────────────────────────────────────────────
     whale_score = 0
@@ -309,6 +386,13 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         return {"pair": pair, "action": conviction.action, "score": conviction.total_score}
 
     trade_side = "LONG" if conviction.should_trade else "SHORT"
+
+    # ── Entry Timing Filter: không SHORT gần funding settlement ──────────
+    # Lúc 00:00 / 08:00 / 16:00 UTC traders điều chỉnh vị thế → volatility tăng
+    # → cơ hội bị stop-out ngay lập tức cao hơn. Block 2h trước mỗi settlement.
+    if trade_side == "SHORT" and _is_near_funding_settlement(_now()):
+        log.info("[%s] SKIP SHORT — within %dh of funding settlement", pair, _FUNDING_BUFFER_HOURS)
+        return {"pair": pair, "action": "SKIP_FUNDING_WINDOW", "score": short_signal.score}
 
     # ── Hard filter: không LONG trong BEAR regime ─────────────────────────
     if trade_side == "LONG" and short_signal.regime == MarketRegime.BEAR:
@@ -537,16 +621,18 @@ def _close_position(pos, exit_price: float, reason: str, session, services: dict
     session.delete(pos)
     session.commit()
 
-    # Update adaptive weights
+    # Update adaptive weights + log per-layer attribution
     try:
-        from scorer import LayerScores
         import json
         log_entry = session.query(SignalLog).filter_by(pair=pos.pair).order_by(SignalLog.id.desc()).first()
         if log_entry:
-            layer_scores = json.loads(log_entry.layer_scores)
-            learner.update_weights_after_trade(layer_scores, pnl)
-    except Exception:
-        pass
+            layer_scores = json.loads(log_entry.layer_scores or "{}")
+            if layer_scores:
+                learner.update_weights_after_trade(layer_scores, pnl)
+                # Attribution: ghi per-layer contribution để phân tích sau
+                _log_attribution(session, trade, layer_scores, pos.entry_price * pos.qty)
+    except Exception as e:
+        log.debug("Weight update / attribution failed: %s", e)
 
     # Blacklist on loss
     if pnl < 0:

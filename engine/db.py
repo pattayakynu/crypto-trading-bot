@@ -78,6 +78,35 @@ class SignalLog(Base):
     short_scores      = Column(String,  nullable=True)  # JSON string
 
 
+class SignalAttribution(Base):
+    """
+    Per-layer attribution for every closed trade.
+    One row per (trade, layer) → easy to query accuracy per layer over time.
+
+    Example query (after 30+ trades):
+        SELECT layer_name,
+               COUNT(*) as trades,
+               ROUND(AVG(pnl), 4) as avg_pnl,
+               ROUND(AVG(CASE WHEN (layer_score > 0 AND pnl > 0)
+                               OR  (layer_score = 0 AND pnl <= 0)
+                          THEN 1.0 ELSE 0.0 END), 3) as direction_accuracy
+        FROM signal_attribution
+        GROUP BY layer_name
+        ORDER BY avg_pnl DESC;
+    """
+    __tablename__ = "signal_attribution"
+    id          = Column(Integer,  primary_key=True, autoincrement=True)
+    trade_id    = Column(Integer,  nullable=False)   # soft FK → trades.id
+    pair        = Column(String,   nullable=False)
+    layer_name  = Column(String,   nullable=False)   # "whale", "macro", ...
+    layer_score = Column(Integer,  nullable=False)
+    layer_max   = Column(Integer,  nullable=False)
+    total_score = Column(Integer,  nullable=False)
+    pnl         = Column(Float,    nullable=False)   # realised PnL in USDT
+    pnl_pct     = Column(Float,    nullable=False)   # pnl / entry_value * 100
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+
 def get_engine():
     return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
