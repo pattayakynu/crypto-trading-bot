@@ -21,8 +21,8 @@ def test_moderate_organic_btc_move():
 
 def test_futures_driven_move_ignored():
     s = make_signal()
-    # Large move but futures-driven
-    assert s.score_btc_move(btc_change_pct=2.5, spot_futures_ratio=0.25) == 0
+    # Large move but futures-dominated (spot < 8% of total — extreme leverage)
+    assert s.score_btc_move(btc_change_pct=2.5, spot_futures_ratio=0.05) == 0
 
 
 def test_tiny_btc_move_ignored():
@@ -32,8 +32,8 @@ def test_tiny_btc_move_ignored():
 
 def test_moderate_mixed_ratio():
     s = make_signal()
-    # Moderate move, mixed spot/futures
-    assert s.score_btc_move(btc_change_pct=1.5, spot_futures_ratio=0.40) == 5
+    # Moderate move, mixed spot/futures (ratio in grey zone: 0.08 ≤ ratio < 0.25)
+    assert s.score_btc_move(btc_change_pct=1.5, spot_futures_ratio=0.15) == 5
 
 
 def test_negative_btc_move_spot_driven():
@@ -88,9 +88,10 @@ def test_total_score_max_is_20():
 
 def test_total_score_futures_driven_minimum():
     s = make_signal()
+    # Extreme futures dominance (spot < 8%) — entire score should be zeroed
     score = s.total_score(
         btc_change_pct=3.0,
-        spot_futures_ratio=0.20,
+        spot_futures_ratio=0.05,
         alt_change_pct=5.0
     )
     assert score == 0

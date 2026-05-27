@@ -9,10 +9,10 @@ BTC_MOVE_WEAK = 0.3         # BTC > 0.3% = minor move (not a lead signal)
 
 # Spot/futures volume ratio thresholds
 # Ratio = spot_volume / (spot_volume + futures_volume)
-# High ratio → move driven by real spot buyers → organic
-# Low ratio → move driven by futures leverage → potentially fake
-SPOT_RATIO_REAL = 0.55      # Spot > 55% = organic move
-SPOT_RATIO_SUSPECT = 0.35   # Spot < 35% = leverage-driven, suspicious
+# On Binance, futures volume is typically 4-5× spot (ratio ≈ 0.15-0.20 in normal market).
+# "Real" and "suspect" thresholds are calibrated to actual Binance market structure.
+SPOT_RATIO_REAL = 0.25      # Spot > 25% of total = unusually organic (above-average spot demand)
+SPOT_RATIO_SUSPECT = 0.08   # Spot < 8% of total = extreme futures dominance, likely manipulation
 
 # Altcoin correlation: if BTC pumps but alts don't follow, suspect fake
 ALT_FOLLOW_MIN = 0.4        # Altcoin move should be at least 40% of BTC move
