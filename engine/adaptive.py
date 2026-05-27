@@ -1,12 +1,17 @@
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from db import LayerWeight, PairBlacklist, Performance
+from db import LayerWeight, PairBlacklist, Performance, Trade
+
+import logging
+log = logging.getLogger(__name__)
 
 # Adaptive learning config
 WEIGHT_ADJUST_STEP = 0.05       # Adjust weights by 5% per closed trade
 WEIGHT_MIN = 0.3                # Floor — never ignore a layer completely
 WEIGHT_MAX = 2.0                # Ceiling — never overweight too much
 PROFITABLE_THRESHOLD = 0.0      # PnL > 0 = profitable trade
+MIN_TRADES_BEFORE_ADJUST = 30   # Don't touch weights until we have enough data
+                                 # (avoids overfitting to the first few lucky/unlucky trades)
 
 # Drawdown guard
 DRAWDOWN_GUARD_PCT = 0.20       # Stop trading if drawdown > 20% from peak
@@ -39,10 +44,21 @@ class AdaptiveLearner:
         - Profitable trade: increase weight of layers that scored highest (they helped)
         - Losing trade: decrease weight of layers that scored highest (they misled)
 
+        Requires MIN_TRADES_BEFORE_ADJUST closed trades before any adjustment.
+        This prevents overfitting to early lucky/unlucky trades when the bot is new.
+
         layer_scores: {"whale": 20, "macro": 15, ...}
         pnl: realized profit/loss in USDT
-        Returns the updated weights dict.
+        Returns the updated weights dict (unchanged if below minimum sample size).
         """
+        trade_count = self.session.query(Trade).count()
+        if trade_count < MIN_TRADES_BEFORE_ADJUST:
+            log.debug(
+                "Skipping weight adjustment — only %d/%d trades recorded",
+                trade_count, MIN_TRADES_BEFORE_ADJUST,
+            )
+            return self.get_weights()
+
         profitable = pnl > PROFITABLE_THRESHOLD
         total_score = sum(layer_scores.values()) or 1
 

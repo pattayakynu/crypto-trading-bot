@@ -40,9 +40,9 @@ _FUNDING_PARTIAL_DECLINE = 0.30  # ≥30% decline from peak = partial reset
 
 # score_volume_exhaustion
 _NEAR_HIGH_THRESHOLD = 0.97     # current price ≥ 97% of period high
-_VOL_STRONG_DECLINE = 0.55      # last/first of 3 ≤ 55% = strong drop (~50%)
-_VOL_MODERATE_DECLINE = 0.85    # last/first of 3 ≤ 85% = moderate drop (~22%)
-_KLINES_NEEDED = 20
+_VOL_STRONG_DECLINE = 0.55      # recent 3-candle avg ≤ 55% of baseline = strong exhaustion
+_VOL_MODERATE_DECLINE = 0.85    # recent 3-candle avg ≤ 85% of baseline = moderate exhaustion
+_KLINES_NEEDED = 20             # Need all 20 candles to establish a reliable baseline
 
 # score_macro_bearish (UUP ETF as DXY proxy)
 _DXY_STRONG_THRESHOLD = 1.5     # UUP ≥1.5% change = strong crypto headwind
@@ -156,8 +156,13 @@ class ShortBrain:
 
     def score_volume_exhaustion(self, symbol: str) -> int:
         """
-        Price near recent high but volume on the last 3 candles is declining.
-        Pattern: buyers exhausted, momentum fading at resistance.
+        Price near recent high but the last 3 candles average well below the
+        20-period baseline average — buyers running out of steam at resistance.
+
+        Compares recent 3-candle avg vs the preceding 17-candle baseline avg.
+        This avoids false signals from single-candle spikes (v3/v1 approach was
+        too noisy when one of the 3 candles happened to be unusually large).
+
         Max 25 pts.
         """
         klines = self.get_klines(symbol)
@@ -173,17 +178,21 @@ class ShortBrain:
         if current_price < period_high * _NEAR_HIGH_THRESHOLD:
             return 0
 
-        # Volume must be declining over last 3 candles
-        v1, v2, v3 = volumes[-3], volumes[-2], volumes[-1]  # oldest → newest of the 3
+        # Recent 3-candle average vs 20-period baseline average
+        recent_vols   = volumes[-3:]    # last 3 candles  (most recent)
+        baseline_vols = volumes[:-3]    # first 17 candles (baseline)
 
-        if v3 >= v1:  # Not declining
-            return 0
+        recent_avg   = sum(recent_vols) / len(recent_vols)
+        baseline_avg = sum(baseline_vols) / len(baseline_vols)
 
-        decline_ratio = v3 / v1 if v1 > 0 else 1.0
+        if baseline_avg <= 0 or recent_avg >= baseline_avg:
+            return 0  # Volume not declining relative to baseline
 
-        if decline_ratio <= _VOL_STRONG_DECLINE:
+        decline_ratio = recent_avg / baseline_avg
+
+        if decline_ratio <= _VOL_STRONG_DECLINE:    # recent ≤ 55% of baseline
             return 25
-        if decline_ratio <= _VOL_MODERATE_DECLINE:
+        if decline_ratio <= _VOL_MODERATE_DECLINE:  # recent ≤ 85% of baseline
             return 15
         return 0
 

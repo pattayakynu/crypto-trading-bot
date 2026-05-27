@@ -69,3 +69,54 @@ def test_btc_7d_change_returns_zero_on_network_error():
     d = make_detector()
     with patch("regime.httpx.get", side_effect=Exception("timeout")):
         assert d.get_btc_7d_change() == 0.0
+
+
+# ── Hysteresis tests ──────────────────────────────────────────────────────────
+
+def test_hysteresis_stays_bull_when_btc_drops_above_exit_threshold():
+    """Once in BULL, stay BULL when BTC 7d drops to 3% (above 2% exit threshold)."""
+    d = make_detector()
+    # Warm up cache with BULL
+    with patch.object(d, "get_btc_7d_change", return_value=7.0), \
+         patch.object(d, "get_dxy_10d_change", return_value=0.5):
+        assert d.detect() == "BULL"
+
+    # Expire cache so next call re-evaluates
+    regime_module._regime_cache["ts"] = 0.0
+
+    # BTC drops to 3% — above the 2% exit threshold → stay BULL
+    with patch.object(d, "get_btc_7d_change", return_value=3.0), \
+         patch.object(d, "get_dxy_10d_change", return_value=0.5):
+        assert d.detect() == "BULL"
+
+
+def test_hysteresis_exits_bull_when_btc_drops_below_exit_threshold():
+    """Once in BULL, exit to SIDEWAYS when BTC 7d falls below 2%."""
+    d = make_detector()
+    # Warm up cache with BULL
+    with patch.object(d, "get_btc_7d_change", return_value=7.0), \
+         patch.object(d, "get_dxy_10d_change", return_value=0.5):
+        assert d.detect() == "BULL"
+
+    # Expire cache
+    regime_module._regime_cache["ts"] = 0.0
+
+    # BTC drops to 1.5% — below 2% exit threshold → SIDEWAYS
+    with patch.object(d, "get_btc_7d_change", return_value=1.5), \
+         patch.object(d, "get_dxy_10d_change", return_value=0.5):
+        assert d.detect() == "SIDEWAYS"
+
+
+def test_hysteresis_exits_bull_to_bear_on_dxy_spike():
+    """DXY spike overrides hysteresis — exit BULL directly to BEAR."""
+    d = make_detector()
+    with patch.object(d, "get_btc_7d_change", return_value=7.0), \
+         patch.object(d, "get_dxy_10d_change", return_value=0.5):
+        assert d.detect() == "BULL"
+
+    regime_module._regime_cache["ts"] = 0.0
+
+    # DXY spikes to 2% while BTC still up — strong dollar overrides BULL
+    with patch.object(d, "get_btc_7d_change", return_value=4.0), \
+         patch.object(d, "get_dxy_10d_change", return_value=2.0):
+        assert d.detect() == "BEAR"

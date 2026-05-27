@@ -8,9 +8,11 @@ logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 log = logging.getLogger(__name__)
 
-BTC_BULL_THRESHOLD = 5.0    # BTC 7d > +5% = weekly uptrend
-BTC_BEAR_THRESHOLD = -5.0   # BTC 7d < -5% = weekly downtrend
-DXY_BEAR_THRESHOLD = 1.5    # UUP 10d > +1.5% = strong dollar = crypto headwind
+BTC_BULL_THRESHOLD = 5.0         # BTC 7d > +5% = enter BULL regime
+BTC_BULL_EXIT_THRESHOLD = 2.0    # Once in BULL, stay until BTC 7d drops below 2%
+                                  # (hysteresis prevents whipsawing near the 5% boundary)
+BTC_BEAR_THRESHOLD = -5.0        # BTC 7d < -5% = weekly downtrend
+DXY_BEAR_THRESHOLD = 1.5         # UUP 10d > +1.5% = strong dollar = crypto headwind
 
 _regime_cache: dict = {"value": None, "ts": 0.0}
 _REGIME_TTL = 3600  # Regime changes slowly — cache 1 hour
@@ -59,9 +61,17 @@ class RegimeDetector:
 
     def detect(self) -> str:
         """
-        BULL:     BTC 7d >= +5% AND DXY 10d < +1.5%
-        BEAR:     BTC 7d <= -5% OR DXY 10d >= +1.5%
-        SIDEWAYS: everything else
+        Detect market regime with hysteresis to avoid whipsawing near the BULL boundary.
+
+        Entry thresholds (fresh or SIDEWAYS/BEAR state):
+          BULL:     BTC 7d >= +5% AND DXY 10d < +1.5%
+          BEAR:     BTC 7d <= -5% OR DXY 10d >= +1.5%
+          SIDEWAYS: everything else
+
+        Hysteresis (once in BULL, use looser exit thresholds):
+          Stay BULL:  BTC 7d >= +2% AND DXY 10d < +1.5%
+          Exit BULL:  BTC 7d < +2% → SIDEWAYS/BEAR per normal rules
+
         Result cached for 1 hour.
         """
         global _regime_cache
@@ -71,13 +81,25 @@ class RegimeDetector:
 
         btc_7d = self.get_btc_7d_change()
         dxy_10d = self.get_dxy_10d_change()
+        prev_regime = _regime_cache.get("value")
 
-        if btc_7d >= BTC_BULL_THRESHOLD and dxy_10d < DXY_BEAR_THRESHOLD:
-            regime = MarketRegime.BULL
-        elif btc_7d <= BTC_BEAR_THRESHOLD or dxy_10d >= DXY_BEAR_THRESHOLD:
-            regime = MarketRegime.BEAR
+        if prev_regime == MarketRegime.BULL:
+            # Hysteresis: once in BULL, stay until BTC 7d drops below 2%
+            # This prevents flip-flopping when BTC hovers around the 5% threshold
+            if btc_7d >= BTC_BULL_EXIT_THRESHOLD and dxy_10d < DXY_BEAR_THRESHOLD:
+                regime = MarketRegime.BULL
+            elif btc_7d <= BTC_BEAR_THRESHOLD or dxy_10d >= DXY_BEAR_THRESHOLD:
+                regime = MarketRegime.BEAR
+            else:
+                regime = MarketRegime.SIDEWAYS
         else:
-            regime = MarketRegime.SIDEWAYS
+            # Normal entry thresholds
+            if btc_7d >= BTC_BULL_THRESHOLD and dxy_10d < DXY_BEAR_THRESHOLD:
+                regime = MarketRegime.BULL
+            elif btc_7d <= BTC_BEAR_THRESHOLD or dxy_10d >= DXY_BEAR_THRESHOLD:
+                regime = MarketRegime.BEAR
+            else:
+                regime = MarketRegime.SIDEWAYS
 
         log.info("Market regime: %s (BTC 7d=%.1f%%, DXY 10d=%.2f%%)", regime, btc_7d, dxy_10d)
         _regime_cache = {"value": regime, "ts": now}

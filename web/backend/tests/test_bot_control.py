@@ -52,7 +52,10 @@ def test_bot_start_sends_command():
     data = resp.json()
     assert data["ok"] is True
     assert data["action"] == "start"
-    redis_mock.set.assert_called_once_with("bot:control", "start")
+    # start sets both the control key AND the running-status key
+    calls = {call.args for call in redis_mock.set.call_args_list}
+    assert ("bot:control", "start") in calls
+    assert ("bot:running", "running") in calls
 
 
 def test_bot_stop_sends_command():
@@ -64,7 +67,10 @@ def test_bot_stop_sends_command():
     data = resp.json()
     assert data["ok"] is True
     assert data["action"] == "stop"
-    redis_mock.set.assert_called_once_with("bot:control", "stop")
+    # stop sets both the control key AND the running-status key
+    calls = {call.args for call in redis_mock.set.call_args_list}
+    assert ("bot:control", "stop") in calls
+    assert ("bot:running", "stopped") in calls
 
 
 def test_bot_status_requires_api_key():

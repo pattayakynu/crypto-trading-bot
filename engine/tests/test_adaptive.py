@@ -2,8 +2,8 @@ import pytest
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db import Base, LayerWeight, PairBlacklist, Performance, init_db
-from adaptive import AdaptiveLearner, WEIGHT_MIN, WEIGHT_MAX, DRAWDOWN_GUARD_PCT
+from db import Base, LayerWeight, PairBlacklist, Performance, Trade, init_db
+from adaptive import AdaptiveLearner, WEIGHT_MIN, WEIGHT_MAX, DRAWDOWN_GUARD_PCT, MIN_TRADES_BEFORE_ADJUST
 
 
 @pytest.fixture
@@ -21,6 +21,17 @@ def make_learner(session):
     return AdaptiveLearner(db_session=session)
 
 
+def _seed_trades(session, n: int = MIN_TRADES_BEFORE_ADJUST):
+    """Insert N dummy closed trades so weight adjustment can proceed."""
+    for i in range(n):
+        session.add(Trade(
+            pair="BTCUSDT", side="LONG", price=50000.0,
+            qty=0.001, usdt_value=50.0, pnl=1.0,
+            conviction_score=60, market_type="SPOT",
+        ))
+    session.commit()
+
+
 # ── LayerWeight tests ────────────────────────────────────────────────────────
 
 def test_get_weights_returns_all_six(session):
@@ -29,9 +40,21 @@ def test_get_weights_returns_all_six(session):
     assert set(weights.keys()) == {"whale", "macro", "fiat_flow", "btc_lead", "ta", "social"}
 
 
+def test_no_weight_adjustment_below_min_sample(session):
+    """Weights stay frozen until MIN_TRADES_BEFORE_ADJUST trades are recorded."""
+    learner = make_learner(session)
+    layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    weights_before = learner.get_weights()["whale"]
+    # Only 5 trades — below the 30-trade minimum
+    _seed_trades(session, n=5)
+    learner.update_weights_after_trade(layer_scores, pnl=5.0)
+    assert learner.get_weights()["whale"] == weights_before
+
+
 def test_profitable_trade_increases_dominant_layer(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)   # meet minimum sample
     weights_before = learner.get_weights()["whale"]
     learner.update_weights_after_trade(layer_scores, pnl=5.0)
     weights_after = learner.get_weights()["whale"]
@@ -41,6 +64,7 @@ def test_profitable_trade_increases_dominant_layer(session):
 def test_losing_trade_decreases_dominant_layer(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)
     weights_before = learner.get_weights()["whale"]
     learner.update_weights_after_trade(layer_scores, pnl=-3.0)
     weights_after = learner.get_weights()["whale"]
@@ -50,6 +74,7 @@ def test_losing_trade_decreases_dominant_layer(session):
 def test_weight_never_falls_below_min(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)
     # Apply many losing trades
     for _ in range(100):
         learner.update_weights_after_trade(layer_scores, pnl=-10.0)
@@ -59,6 +84,7 @@ def test_weight_never_falls_below_min(session):
 def test_weight_never_exceeds_max(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)
     # Apply many profitable trades
     for _ in range(100):
         learner.update_weights_after_trade(layer_scores, pnl=10.0)
@@ -68,6 +94,7 @@ def test_weight_never_exceeds_max(session):
 def test_zero_score_layer_not_adjusted(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)
     before = learner.get_weights()["macro"]
     learner.update_weights_after_trade(layer_scores, pnl=5.0)
     after = learner.get_weights()["macro"]
@@ -77,6 +104,7 @@ def test_zero_score_layer_not_adjusted(session):
 def test_reset_weights_back_to_one(session):
     learner = make_learner(session)
     layer_scores = {"whale": 25, "macro": 0, "fiat_flow": 0, "btc_lead": 0, "ta": 0, "social": 0}
+    _seed_trades(session)
     learner.update_weights_after_trade(layer_scores, pnl=5.0)
     learner.reset_weights()
     for w in learner.get_weights().values():

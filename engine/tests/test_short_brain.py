@@ -106,7 +106,8 @@ def test_funding_no_client_returns_empty_history():
 def test_volume_exhaustion_strong():
     b = make_brain()
     closes = [100.0] * 17 + [105.0, 104.8, 105.1]
-    volumes = [1000.0] * 17 + [900.0, 600.0, 450.0]   # ~50% drop
+    # baseline avg = 1000.0; recent avg = (600+500+400)/3 = 500 → ratio 0.50 ≤ 0.55
+    volumes = [1000.0] * 17 + [600.0, 500.0, 400.0]
     b.get_klines = MagicMock(return_value=_make_klines(closes, volumes))
     assert b.score_volume_exhaustion("ETHUSDT") == 25
 
@@ -114,7 +115,8 @@ def test_volume_exhaustion_strong():
 def test_volume_exhaustion_moderate():
     b = make_brain()
     closes = [100.0] * 17 + [105.0, 104.8, 105.1]
-    volumes = [1000.0] * 17 + [900.0, 750.0, 700.0]   # ~22% drop
+    # baseline avg = 1000.0; recent avg = (850+800+750)/3 ≈ 800 → ratio 0.80 ≤ 0.85
+    volumes = [1000.0] * 17 + [850.0, 800.0, 750.0]
     b.get_klines = MagicMock(return_value=_make_klines(closes, volumes))
     assert b.score_volume_exhaustion("ETHUSDT") == 15
 
@@ -122,7 +124,8 @@ def test_volume_exhaustion_moderate():
 def test_no_exhaustion_volume_not_declining():
     b = make_brain()
     closes = [100.0] * 17 + [105.0, 104.8, 105.1]
-    volumes = [1000.0] * 17 + [900.0, 950.0, 1100.0]  # Volume rising
+    # recent avg = (900+950+1100)/3 ≈ 983 ≥ baseline 1000 → not declining
+    volumes = [1000.0] * 17 + [900.0, 950.0, 1100.0]
     b.get_klines = MagicMock(return_value=_make_klines(closes, volumes))
     assert b.score_volume_exhaustion("ETHUSDT") == 0
 

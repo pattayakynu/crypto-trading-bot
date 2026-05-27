@@ -39,6 +39,7 @@ from macro import MacroContext
 from fiat_flow import FiatFlowTracker
 from btc_lead import BtcLeadSignal
 from short_brain import ShortBrain
+from regime import MarketRegime
 from strategy import TaStrategy
 from social import SocialSignal
 from scorer import ConvictionScorer, LayerScores
@@ -73,6 +74,17 @@ WATCHLIST = [
 SHORT_CONVICTION_THRESHOLD = int(os.getenv("SHORT_CONVICTION_THRESHOLD", "30"))
 # Max % equity cho futures short (nhỏ hơn spot vì dùng đòn bẩy)
 MAX_SHORT_POSITION_PCT = 0.05   # 5% equity max — SHORT is secondary to LONG
+
+# Alts có correlation cao với nhau → không long nhiều alt cùng lúc
+_ALT_PAIRS = frozenset({"ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"})
+
+# Tiered LONG position sizing theo conviction score (thay vì flat 40-50%)
+# Giới hạn nhỏ hơn để tránh ruin với capital nhỏ
+_LONG_POSITION_TIERS = [
+    (85, 0.10),   # score ≥ 85 → 10% equity (high conviction)
+    (70, 0.075),  # score ≥ 70 → 7.5% equity (medium-high)
+    (55, 0.05),   # score ≥ 55 → 5% equity (base)
+]
 
 
 def _now():
@@ -285,6 +297,11 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
 
     trade_side = "LONG" if conviction.should_trade else "SHORT"
 
+    # ── Hard filter: không LONG trong BEAR regime ─────────────────────────
+    if trade_side == "LONG" and short_signal.regime == MarketRegime.BEAR:
+        log.info("[%s] SKIP LONG — BEAR regime, không long trong downtrend", pair)
+        return {"pair": pair, "action": "SKIP_BEAR_REGIME", "score": conviction.total_score}
+
     # ── LLM Dual Analysis — cả LONG lẫn SHORT đều cần confirm ────────────
     if trade_side == "LONG":
         llm_result = llm.analyze(
@@ -309,6 +326,14 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
             log.info("[%s] SKIP — LLM disagreement (SHORT)", pair)
             return {"pair": pair, "action": "SKIP_LLM_DISAGREEMENT_SHORT", "score": short_signal.score}
 
+    # ── Correlation Filter: max 1 alt position ───────────────────────────
+    # ETH/BNB/SOL/ADA correlation > 0.85 với BTC → không mở nhiều alt cùng lúc
+    if trade_side == "LONG" and pair in _ALT_PAIRS:
+        open_alts = session.query(Position).filter(Position.pair.in_(list(_ALT_PAIRS))).count()
+        if open_alts >= 1:
+            log.info("[%s] SKIP LONG — alt correlation risk (open_alts=%d)", pair, open_alts)
+            return {"pair": pair, "action": "SKIP_CORRELATION", "score": conviction.total_score}
+
     # ── Position Limit ────────────────────────────────────────────────────
     equity = _get_equity(session)
     rm = RiskManager(equity=equity)
@@ -328,8 +353,11 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
 
     # ── Execute SPOT LONG ─────────────────────────────────────────────────
     if trade_side == "LONG":
-        size = rm.calc_position_size(conviction.total_score, conviction.confidence)
-        if size == 0:
+        # Tiered sizing: 5% / 7.5% / 10% equity based on conviction score
+        # Avoids flat over-allocation with small capital (~$215)
+        long_pct = next(pct for threshold, pct in _LONG_POSITION_TIERS if conviction.total_score >= threshold)
+        size = equity * long_pct
+        if size < 10.0:
             return {"pair": pair, "action": "SKIP_EQUITY_TOO_SMALL"}
 
         qty = rm.calc_qty(size, current_price)
