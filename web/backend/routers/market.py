@@ -81,7 +81,7 @@ def get_market_news():
 
     items = []
 
-    # ── CryptoPanic ───────────────────────────────────────────────────────────
+    # ── CryptoPanic (optional — cần API key) ──────────────────────────────────
     cp_key = os.getenv("CRYPTOPANIC_API_KEY", "")
     if cp_key:
         try:
@@ -91,7 +91,7 @@ def get_market_news():
                 timeout=8,
             )
             if resp.status_code == 200:
-                for post in resp.json().get("results", [])[:15]:
+                for post in resp.json().get("results", [])[:10]:
                     title = post.get("title", "")
                     items.append({
                         "title": title,
@@ -103,6 +103,38 @@ def get_market_news():
                     })
         except Exception:
             pass
+
+    # ── CoinDesk RSS (crypto, miễn phí) ──────────────────────────────────────
+    try:
+        feed = feedparser.parse("https://www.coindesk.com/arc/outboundfeeds/rss/")
+        for entry in feed.entries[:8]:
+            title = entry.get("title", "")
+            items.append({
+                "title": title,
+                "url": entry.get("link", ""),
+                "source": "CoinDesk",
+                "published_at": entry.get("published", ""),
+                "category": "crypto",
+                "importance": _importance(title),
+            })
+    except Exception:
+        pass
+
+    # ── Cointelegraph RSS (crypto, miễn phí) ─────────────────────────────────
+    try:
+        feed = feedparser.parse("https://cointelegraph.com/rss")
+        for entry in feed.entries[:8]:
+            title = entry.get("title", "")
+            items.append({
+                "title": title,
+                "url": entry.get("link", ""),
+                "source": "Cointelegraph",
+                "published_at": entry.get("published", ""),
+                "category": "crypto",
+                "importance": _importance(title),
+            })
+    except Exception:
+        pass
 
     # ── Yahoo Finance RSS (macro) ─────────────────────────────────────────────
     try:

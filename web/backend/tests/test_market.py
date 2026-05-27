@@ -184,4 +184,6 @@ def test_news_survives_cryptopanic_failure():
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) >= 1
-    assert data[0]["source"] == "Yahoo Finance"
+    # Khi CryptoPanic lỗi, data vẫn có từ RSS feeds (CoinDesk/Cointelegraph/Yahoo)
+    rss_sources = {"Yahoo Finance", "CoinDesk", "Cointelegraph"}
+    assert all(item["source"] in rss_sources for item in data)
