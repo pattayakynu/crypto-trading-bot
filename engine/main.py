@@ -382,7 +382,7 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         action=conviction.action,
         short_total_score=short_signal.score,
         short_regime=short_signal.regime,
-        short_scores=json.dumps(short_signal.signal_scores) if short_signal.signal_scores else None,
+        short_scores=json.dumps(short_signal.signal_scores or {}),
     ))
     session.commit()
 
