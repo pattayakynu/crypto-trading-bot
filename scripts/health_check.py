@@ -122,31 +122,45 @@ except Exception as e:
 
 
 def check_last_scan() -> tuple[bool, str]:
-    """Lần scan gần nhất có trong 10 phút không."""
+    """
+    Kiểm tra heartbeat từ Redis (bot:last_scan_ts).
+    Dùng Redis thay vì SignalLog vì FAKE_PUMP block không ghi SignalLog
+    nhưng scan_job vẫn chạy bình thường.
+    """
     script = """
-from db import get_engine, SignalLog
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
-sess = sessionmaker(get_engine())()
-last = sess.query(SignalLog).order_by(SignalLog.id.desc()).first()
-if last and last.created_at:
-    diff = (datetime.utcnow() - last.created_at).total_seconds()
-    print(int(diff))
-else:
-    print(99999)
+import os, time
+from dotenv import load_dotenv; load_dotenv(override=True)
+try:
+    import redis
+    r = redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
+    prefix = os.getenv('REDIS_KEY_PREFIX', 'bot:')
+    ts = r.get(f'{prefix}last_scan_ts')
+    if ts:
+        age = int(time.time()) - int(ts)
+        print(f'REDIS:{age}')
+    else:
+        print('REDIS:99999')
+except Exception as e:
+    print(f'ERR:{e}')
 """
     try:
         out = subprocess.check_output(
             ["docker", "exec", ENGINE_CONTAINER, "python", "-c", script],
             stderr=subprocess.DEVNULL, timeout=15, text=True,
         ).strip()
-        age = int(out)
-        if age > MAX_SCAN_AGE:
-            mins = age // 60
-            return False, f"Không có scan trong {mins} phút — engine có thể treo"
-        return True, f"Scan gần nhất {age}s trước"
+
+        if out.startswith("REDIS:"):
+            age = int(out[6:])
+            if age > MAX_SCAN_AGE:
+                mins = age // 60
+                return False, f"Không có scan trong {mins} phút — engine có thể treo"
+            return True, f"Scan gần nhất {age}s trước"
+        # Fallback: Redis key chưa có (engine vừa restart chưa scan lần nào)
+        if out.startswith("ERR:"):
+            return False, f"Không đọc được Redis: {out[4:]}"
+        return True, "Heartbeat chưa có (engine mới khởi động)"
     except subprocess.TimeoutExpired:
-        return False, "Timeout khi truy vấn DB"
+        return False, "Timeout khi kiểm tra Redis"
     except Exception as e:
         return False, str(e)
 

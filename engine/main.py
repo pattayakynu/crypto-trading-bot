@@ -748,6 +748,14 @@ def main():
     # Full scan every SCAN_INTERVAL seconds
     def scan_job():
         log.info("── Scan cycle started ──")
+        # Heartbeat — ghi timestamp mỗi cycle kể cả khi FAKE_PUMP block hết
+        # Health check dùng key này thay vì SignalLog (SignalLog không được ghi khi FAKE_PUMP)
+        if _r:
+            try:
+                import time as _time
+                _r.set(f"{KEY_PREFIX}last_scan_ts", int(_time.time()))
+            except Exception:
+                pass
         for pair in WATCHLIST:
             try:
                 result = run_signal_pipeline(pair, session, services, client)
