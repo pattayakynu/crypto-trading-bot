@@ -1,7 +1,10 @@
 from enum import Enum
 
 FAKE_PUMP_BTC_THRESHOLD = 1.5     # BTC move % để coi là pump
-FAKE_PUMP_RATIO_THRESHOLD = 0.45  # spot/futures ratio min để coi là real
+# Binance bình thường: spot ≈ 17-20% tổng volume (ratio 0.17-0.20).
+# Chỉ flag FAKE_PUMP khi spot < 15% — tức futures đang dominate bất thường.
+# Giá trị cũ 0.45 quá strict → block mọi move BTC > 1.5% dù thị trường bình thường.
+FAKE_PUMP_RATIO_THRESHOLD = 0.15  # spot < 15% total = futures-driven pump thực sự
 STOP_HUNT_DIP_THRESHOLD = 0.003   # dip > 0.3% below support
 STOP_HUNT_MAX_MINUTES = 5         # phục hồi trong vòng 5 phút
 WASH_TRADE_VOLUME_MIN = 3.0       # volume ratio tối thiểu để nghi ngờ

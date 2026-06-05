@@ -37,6 +37,7 @@ SHORT_SIGNAL_MAX = {
     "funding_reset":     25,
     "volume_exhaustion": 25,
     "macro_bearish":     25,
+    "trend_breakdown":   25,
 }
 
 SHORT_SIGNAL_LABELS = {
@@ -44,9 +45,10 @@ SHORT_SIGNAL_LABELS = {
     "funding_reset":     "Funding reset",
     "volume_exhaustion": "Vol cạn kiệt",
     "macro_bearish":     "Vĩ mô giảm",
+    "trend_breakdown":   "Xu hướng gãy",
 }
 
-SHORT_SIGNAL_ORDER = ["alt_weakness", "funding_reset", "volume_exhaustion", "macro_bearish"]
+SHORT_SIGNAL_ORDER = ["alt_weakness", "funding_reset", "volume_exhaustion", "macro_bearish", "trend_breakdown"]
 
 MIN_CONVICTION  = 55
 HIGH_CONVICTION = 75

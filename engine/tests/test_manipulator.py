@@ -2,10 +2,18 @@ import pytest
 from manipulator import ManipulationFilter, ManipulationResult
 
 
-def test_fake_pump_detected_when_futures_driven():
+def test_fake_pump_detected_when_heavily_futures_driven():
+    """Spot < 15% of total = extreme futures dominance = FAKE_PUMP."""
     mf = ManipulationFilter()
-    result = mf.check_btc_pump(btc_change_pct=2.1, spot_futures_ratio=0.3)
+    result = mf.check_btc_pump(btc_change_pct=2.1, spot_futures_ratio=0.10)
     assert result == ManipulationResult.FAKE_PUMP
+
+
+def test_normal_binance_ratio_not_fake_pump():
+    """Binance normal: spot ~17-20% of total. Was incorrectly flagged with old 0.45 threshold."""
+    mf = ManipulationFilter()
+    result = mf.check_btc_pump(btc_change_pct=2.1, spot_futures_ratio=0.20)
+    assert result == ManipulationResult.CLEAN
 
 
 def test_real_pump_passes():

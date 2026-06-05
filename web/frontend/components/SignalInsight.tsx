@@ -4,7 +4,7 @@ import { useSignals, type CoinSignal, type SignalScan, type ShortSignal } from '
 // Layer display order (matches engine pipeline)
 const LAYER_ORDER = ['whale', 'macro', 'fiat_flow', 'btc_lead', 'ta', 'social'];
 
-const SHORT_SIGNAL_ORDER = ['alt_weakness', 'funding_reset', 'volume_exhaustion', 'macro_bearish'];
+const SHORT_SIGNAL_ORDER = ['alt_weakness', 'funding_reset', 'volume_exhaustion', 'macro_bearish', 'trend_breakdown'];
 
 function shortScoreColor(score: number): string {
   if (score >= 65) return 'text-red-400';
