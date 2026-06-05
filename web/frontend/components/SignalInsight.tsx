@@ -109,7 +109,7 @@ function ScanCard({ scan, dim }: { scan: SignalScan; dim?: boolean }) {
           <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
             <span className="text-[9px] text-red-500 font-semibold">SHORT</span>
             <span className={`text-[10px] font-bold tabular-nums ${shortScoreColor(scan.short.score)}`}>
-              {scan.short.score}/100
+              {scan.short.score}/125
             </span>
             <span className="text-[9px] text-gray-600 ml-auto">{scan.short.regime}</span>
           </div>

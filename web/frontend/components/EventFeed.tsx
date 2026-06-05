@@ -35,10 +35,16 @@ function formatEvent(e: BotEvent): { icon: string; text: string; color: string }
       const actionMap: Record<string, string> = {
         BUY: '🟢 MUA',
         SKIP: '⏭ Bỏ qua',
-        SKIP_FAKE_PUMP: '⚠️ Pump giả',
+        SKIP_FAKE_PUMP: '⚠️ Pump giả (futures)',
+        SKIP_SPREAD: '💧 Spread rộng',
+        SKIP_BEAR_REGIME: '🐻 BEAR regime',
+        SKIP_CORRELATION: '🔗 Tương quan cao',
+        SKIP_FUNDING_WINDOW: '⏰ Gần funding',
         SKIP_LLM_DISAGREEMENT: '🤖 AI không đồng thuận',
+        SKIP_LLM_DISAGREEMENT_SHORT: '🤖 AI từ chối SHORT',
         SKIP_MAX_POSITIONS: '🔒 Đủ vị thế',
         SKIP_DRAWDOWN_GUARD: '🛡 Drawdown guard',
+        SKIP_EQUITY_TOO_SMALL: '💸 Vốn quá nhỏ',
         BLACKLISTED: '🚫 Blacklist',
       };
       return {

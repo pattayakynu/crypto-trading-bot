@@ -267,6 +267,8 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     manip_result = manipulator.check_btc_pump(btc_change, spot_ratio)
     if manip_result == ManipulationResult.FAKE_PUMP:
         log.info("[%s] SKIP — FAKE_PUMP detected (BTC futures-driven)", pair)
+        publisher.publish_signal(pair=pair, score=0, action="SKIP_FAKE_PUMP",
+                                 confidence="LOW", reasons=["Futures-driven pump detected"])
         return {"pair": pair, "action": "SKIP_FAKE_PUMP"}
 
     # ── Spread / Liquidity check ───────────────────────────────────────────
@@ -274,6 +276,8 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
     ok_spread, spread_pct = _check_spread(client, pair)
     if not ok_spread:
         log.info("[%s] SKIP — spread too wide (%.3f%% > 0.15%%)", pair, spread_pct)
+        publisher.publish_signal(pair=pair, score=0, action="SKIP_SPREAD",
+                                 confidence="LOW", reasons=[f"Spread {spread_pct:.3f}% > 0.15%"])
         return {"pair": pair, "action": "SKIP_SPREAD"}
 
     # ── Tầng 1: Whale ─────────────────────────────────────────────────────
