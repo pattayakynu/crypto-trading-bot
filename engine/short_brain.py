@@ -214,29 +214,21 @@ class ShortBrain:
     def score_macro_bearish(self) -> int:
         """
         DXY rising = strong dollar = structural headwind for crypto.
-        Measures change over ~15-day window.
-        Fallback chain: UUP → DX-Y.NYB → 0 pts.
+        Đo % change DXY qua cửa sổ ~15 ngày bằng Frankfurter FX basket
+        (xem macro.dxy_change_pct). yfinance bị Yahoo block khi chạy qua VPN.
         Max 25 pts.
         """
-        for ticker in ("UUP", "DX-Y.NYB"):
-            try:
-                hist = yf.Ticker(ticker).history(period="15d")
-                if len(hist) < 10:
-                    continue
-                prev = float(hist["Close"].iloc[0])
-                curr = float(hist["Close"].iloc[-1])
-                change_pct = (curr - prev) / prev * 100 if prev != 0 else 0.0
-
-                if change_pct >= _DXY_STRONG_THRESHOLD:
-                    return 25
-                if change_pct >= _DXY_MODERATE_THRESHOLD:
-                    return 15
-                return 0
-            except Exception as e:
-                log.debug("score_macro_bearish %s failed: %s", ticker, e)
-
-        log.warning("All DXY sources failed for macro_bearish — returning 0")
-        return 0
+        try:
+            from macro import dxy_change_pct
+            change_pct = dxy_change_pct(days=15)
+            if change_pct >= _DXY_STRONG_THRESHOLD:
+                return 25
+            if change_pct >= _DXY_MODERATE_THRESHOLD:
+                return 15
+            return 0
+        except Exception as e:
+            log.debug("score_macro_bearish failed: %s", e)
+            return 0
 
     # ── Signal 5: Trend Breakdown (dead cat bounce in downtrend) ─────────────
 

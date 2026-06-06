@@ -147,33 +147,22 @@ def test_volume_no_client_returns_zero():
 
 def test_macro_bearish_strong_dxy():
     b = make_brain()
-    with patch("short_brain.yf.Ticker") as mock_yf:
-        import pandas as pd
-        mock_yf.return_value.history.return_value = pd.DataFrame(
-            {"Close": [25.0] * 10 + [25.4]}
-        )
-        # (25.4-25.0)/25.0*100 = 1.6% > DXY_STRONG_THRESHOLD(1.5)
+    # DXY +1.6% ≥ strong threshold (1.5)
+    with patch("macro.dxy_change_pct", return_value=1.6):
         assert b.score_macro_bearish() == 25
 
 
 def test_macro_bearish_moderate_dxy():
     b = make_brain()
-    with patch("short_brain.yf.Ticker") as mock_yf:
-        import pandas as pd
-        mock_yf.return_value.history.return_value = pd.DataFrame(
-            {"Close": [25.0] * 10 + [25.28]}
-        )
-        # 1.12% — between DXY_BEARISH(1.0) and DXY_STRONG(1.5)
+    # DXY +1.12% — between moderate (1.0) and strong (1.5)
+    with patch("macro.dxy_change_pct", return_value=1.12):
         assert b.score_macro_bearish() == 15
 
 
 def test_macro_bullish_dxy_falling():
     b = make_brain()
-    with patch("short_brain.yf.Ticker") as mock_yf:
-        import pandas as pd
-        mock_yf.return_value.history.return_value = pd.DataFrame(
-            {"Close": [25.5] * 10 + [25.0]}
-        )
+    # DXY falling → no bearish signal
+    with patch("macro.dxy_change_pct", return_value=-0.8):
         assert b.score_macro_bearish() == 0
 
 

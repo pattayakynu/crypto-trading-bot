@@ -2,6 +2,7 @@ import time
 import logging
 import httpx
 import yfinance as yf
+from datetime import date, timedelta
 
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("peewee").setLevel(logging.CRITICAL)
@@ -17,14 +18,80 @@ GOLD_FALLING_THRESHOLD = -0.5   # gold giảm > 0.5% → risk-off macro
 
 MACRO_MAX_SCORE = 20
 
-# Cache để tránh gọi API nhiều lần
-_dxy_cache:  dict = {"value": None, "ts": 0.0}
+# ── DXY proxy via Frankfurter FX basket ─────────────────────────────────────────
+# yfinance (UUP/DX-Y.NYB) bị Yahoo block khi chạy qua VPN/datacenter IP.
+# Thay bằng Frankfurter (ECB data, miễn phí, không key, có lịch sử).
+# Tính DXY proxy từ rổ tiền tệ chuẩn ICE US Dollar Index:
+_DXY_WEIGHTS = {
+    "EUR": 0.576,
+    "JPY": 0.136,
+    "GBP": 0.119,
+    "CAD": 0.091,
+    "SEK": 0.042,
+    "CHF": 0.036,
+}
+_FRANKFURTER = "https://api.frankfurter.dev/v1"
+
+# Cache theo số ngày để tránh gọi API nhiều lần (DXY thay đổi chậm)
+_dxy_cache:  dict = {}              # {days: {"value": float, "ts": float}}
 _gold_cache: dict = {"value": None, "ts": 0.0}
-_CACHE_TTL = 3600   # 1 giờ — DXY/Gold thay đổi chậm
+_CACHE_TTL = 3600   # 1 giờ
+
+
+def _frankfurter_usd_rates(d: str | None = None) -> dict | None:
+    """Lấy tỷ giá base=USD cho rổ DXY tại ngày d (hoặc mới nhất). None nếu lỗi."""
+    symbols = ",".join(_DXY_WEIGHTS.keys())
+    url = f"{_FRANKFURTER}/{d or 'latest'}?base=USD&symbols={symbols}"
+    try:
+        r = httpx.get(url, timeout=8.0, follow_redirects=True)
+        if r.status_code == 200:
+            return r.json().get("rates", {})
+    except Exception as e:
+        log.debug("Frankfurter fetch failed (%s): %s", d, e)
+    return None
+
+
+def dxy_change_pct(days: int = 1) -> float:
+    """
+    DXY % change qua `days` ngày, tính từ rổ FX Frankfurter.
+    base=USD → tỷ giá cao hơn = USD mạnh hơn. Weighted theo ICE DXY weights.
+    Trả 0.0 nếu không lấy được data (neutral).
+    Kết quả cache 1 giờ theo từng `days`.
+    """
+    global _dxy_cache
+    now_ts = time.time()
+    cached = _dxy_cache.get(days)
+    if cached and now_ts - cached["ts"] < _CACHE_TTL:
+        return cached["value"]
+
+    now_rates = _frankfurter_usd_rates()
+    if not now_rates:
+        log.warning("DXY: không lấy được tỷ giá hiện tại — trả 0.0")
+        return 0.0
+
+    past_date = (date.today() - timedelta(days=days)).isoformat()
+    past_rates = _frankfurter_usd_rates(past_date)
+    if not past_rates:
+        log.warning("DXY: không lấy được tỷ giá %d ngày trước — trả 0.0", days)
+        return 0.0
+
+    total_w = 0.0
+    weighted = 0.0
+    for ccy, w in _DXY_WEIGHTS.items():
+        n = now_rates.get(ccy)
+        p = past_rates.get(ccy)
+        if n and p and p != 0:
+            weighted += w * (n - p) / p * 100
+            total_w += w
+
+    value = weighted / total_w if total_w > 0 else 0.0
+    _dxy_cache[days] = {"value": value, "ts": now_ts}
+    log.info("DXY %dd change: %.3f%% (Frankfurter basket)", days, value)
+    return value
 
 
 def _yf_pct_change(symbol: str, period: str = "5d") -> float | None:
-    """Thử lấy % change qua yfinance. Trả None nếu fail."""
+    """Thử lấy % change qua yfinance. None nếu fail."""
     try:
         hist = yf.Ticker(symbol).history(period=period)
         if len(hist) < 2:
@@ -38,94 +105,23 @@ def _yf_pct_change(symbol: str, period: str = "5d") -> float | None:
         return None
 
 
-def _fetch_dxy_change() -> float:
-    """
-    DXY 1-day % change với fallback chain:
-    1. yfinance UUP (ETF)
-    2. yfinance DX-Y.NYB (DXY Futures index)
-    3. ExchangeRate API: tính từ USD/EUR inverse (miễn phí, không cần key)
-    """
-    global _dxy_cache
-    now = time.time()
-    if _dxy_cache["value"] is not None and now - _dxy_cache["ts"] < _CACHE_TTL:
-        return _dxy_cache["value"]
-
-    # Thử 1: yfinance UUP
-    v = _yf_pct_change("UUP")
-    if v is not None:
-        _dxy_cache = {"value": v, "ts": now}
-        return v
-
-    # Thử 2: yfinance DX-Y.NYB (DXY Futures)
-    v = _yf_pct_change("DX-Y.NYB")
-    if v is not None:
-        _dxy_cache = {"value": v, "ts": now}
-        return v
-
-    # Thử 3: ExchangeRate API — tính DXY proxy từ USD/EUR
-    # Khi USD mạnh → EUR/USD giảm → DXY tăng
-    try:
-        resp = httpx.get(
-            "https://open.er-api.com/v6/latest/EUR",
-            timeout=6.0,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            # Lấy USD rate so với EUR (inverse = EUR/USD)
-            usd_per_eur = data.get("rates", {}).get("USD", 0)
-            if usd_per_eur > 0:
-                # Dùng cache trước để tính % change
-                prev_val = _dxy_cache.get("value")
-                # Không có prev → trả 0 (neutral)
-                _dxy_cache = {"value": 0.0, "ts": now, "_eur_usd": usd_per_eur}
-                log.debug("DXY via ExchangeRate API: EUR/USD=%.4f", usd_per_eur)
-                return 0.0
-    except Exception as e:
-        log.debug("ExchangeRate API failed: %s", e)
-
-    log.warning("All DXY sources failed — returning 0.0 (neutral)")
-    return 0.0
-
-
 def _fetch_gold_change() -> float:
     """
-    Gold 1-day % change với fallback chain:
-    1. yfinance GLD (ETF)
-    2. yfinance GC=F (Gold Futures)
-    3. metals.live API (miễn phí)
+    Gold 1-day % change: yfinance GLD → GC=F → 0.0 (neutral).
+    Gold là signal phụ — neutral không làm hỏng scoring (default = 5 pts).
     """
     global _gold_cache
     now = time.time()
     if _gold_cache["value"] is not None and now - _gold_cache["ts"] < _CACHE_TTL:
         return _gold_cache["value"]
 
-    # Thử 1: yfinance GLD
-    v = _yf_pct_change("GLD")
-    if v is not None:
-        _gold_cache = {"value": v, "ts": now}
-        return v
+    for ticker in ("GLD", "GC=F"):
+        v = _yf_pct_change(ticker)
+        if v is not None:
+            _gold_cache = {"value": v, "ts": now}
+            return v
 
-    # Thử 2: yfinance GC=F (Gold Futures)
-    v = _yf_pct_change("GC=F")
-    if v is not None:
-        _gold_cache = {"value": v, "ts": now}
-        return v
-
-    # Thử 3: metals.live
-    try:
-        resp = httpx.get("https://api.metals.live/v1/spot/gold", timeout=6.0)
-        if resp.status_code == 200:
-            price = float(resp.json()[0].get("gold", 0))
-            prev = _gold_cache.get("_prev_price")
-            _gold_cache = {"value": 0.0, "ts": now, "_prev_price": price}
-            if prev and prev > 0:
-                pct = (price - prev) / prev * 100
-                _gold_cache["value"] = pct
-                return pct
-    except Exception as e:
-        log.debug("metals.live failed: %s", e)
-
-    log.warning("All Gold sources failed — returning 0.0 (neutral)")
+    log.debug("Gold sources unavailable — returning 0.0 (neutral)")
     return 0.0
 
 
@@ -134,17 +130,18 @@ class MacroContext:
         pass
 
     def fetch_dxy_change(self) -> float:
-        return _fetch_dxy_change()
+        """DXY 1-day % change via Frankfurter basket."""
+        return dxy_change_pct(days=1)
 
     def fetch_gold_change(self) -> float:
         return _fetch_gold_change()
 
     def score_dxy(self, dxy_change_pct: float) -> int:
         if dxy_change_pct <= DXY_BULLISH_THRESHOLD:
-            return 10
+            return 10   # Dollar yếu = dòng tiền chảy vào risk assets
         if dxy_change_pct >= DXY_BEARISH_THRESHOLD:
-            return 0
-        return 5
+            return 0    # Dollar mạnh = risk-off
+        return 5        # Trung tính
 
     def score_gold(self, gold_change_pct: float, crypto_change_pct: float) -> int:
         both_rising       = gold_change_pct >= GOLD_RISING_THRESHOLD and crypto_change_pct > 0

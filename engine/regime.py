@@ -48,22 +48,15 @@ class RegimeDetector:
 
     def get_dxy_10d_change(self) -> float:
         """
-        DXY 10-day % change.
-        Fallback chain: UUP → DX-Y.NYB → 0.0 (neutral).
+        DXY 10-day % change qua Frankfurter FX basket (xem macro.dxy_change_pct).
+        yfinance UUP/DX-Y.NYB bị Yahoo block khi chạy qua VPN.
         """
-        for ticker in ("UUP", "DX-Y.NYB"):
-            try:
-                hist = yf.Ticker(ticker).history(period="15d")
-                if len(hist) < 10:
-                    continue
-                prev = float(hist["Close"].iloc[-10])
-                curr = float(hist["Close"].iloc[-1])
-                if prev != 0:
-                    return (curr - prev) / prev * 100
-            except Exception as e:
-                log.debug("yfinance %s 10d failed: %s", ticker, e)
-        log.warning("All DXY sources failed for regime — returning 0.0")
-        return 0.0
+        try:
+            from macro import dxy_change_pct
+            return dxy_change_pct(days=10)
+        except Exception as e:
+            log.debug("get_dxy_10d_change failed: %s", e)
+            return 0.0
 
     def detect(self) -> str:
         """
