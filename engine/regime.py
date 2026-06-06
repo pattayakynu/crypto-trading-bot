@@ -47,16 +47,22 @@ class RegimeDetector:
         return 0.0
 
     def get_dxy_10d_change(self) -> float:
-        """UUP 10-day % change via yfinance (same source as macro.py)."""
-        try:
-            hist = yf.Ticker("UUP").history(period="15d")
-            if len(hist) < 10:
-                return 0.0
-            prev = float(hist["Close"].iloc[-10])
-            curr = float(hist["Close"].iloc[-1])
-            return (curr - prev) / prev * 100 if prev != 0 else 0.0
-        except Exception as e:
-            log.debug("yfinance UUP 10d failed: %s", e)
+        """
+        DXY 10-day % change.
+        Fallback chain: UUP → DX-Y.NYB → 0.0 (neutral).
+        """
+        for ticker in ("UUP", "DX-Y.NYB"):
+            try:
+                hist = yf.Ticker(ticker).history(period="15d")
+                if len(hist) < 10:
+                    continue
+                prev = float(hist["Close"].iloc[-10])
+                curr = float(hist["Close"].iloc[-1])
+                if prev != 0:
+                    return (curr - prev) / prev * 100
+            except Exception as e:
+                log.debug("yfinance %s 10d failed: %s", ticker, e)
+        log.warning("All DXY sources failed for regime — returning 0.0")
         return 0.0
 
     def detect(self) -> str:

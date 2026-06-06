@@ -213,26 +213,30 @@ class ShortBrain:
 
     def score_macro_bearish(self) -> int:
         """
-        UUP ETF (DXY proxy) rising = strong dollar = structural headwind for crypto.
-        Measures change from iloc[0] to iloc[-1] over a ~15-day window.
+        DXY rising = strong dollar = structural headwind for crypto.
+        Measures change over ~15-day window.
+        Fallback chain: UUP → DX-Y.NYB → 0 pts.
         Max 25 pts.
         """
-        try:
-            hist = yf.Ticker("UUP").history(period="15d")
-            if len(hist) < 10:
-                return 0
-            prev = float(hist["Close"].iloc[0])
-            curr = float(hist["Close"].iloc[-1])
-            change_pct = (curr - prev) / prev * 100 if prev != 0 else 0.0
+        for ticker in ("UUP", "DX-Y.NYB"):
+            try:
+                hist = yf.Ticker(ticker).history(period="15d")
+                if len(hist) < 10:
+                    continue
+                prev = float(hist["Close"].iloc[0])
+                curr = float(hist["Close"].iloc[-1])
+                change_pct = (curr - prev) / prev * 100 if prev != 0 else 0.0
 
-            if change_pct >= _DXY_STRONG_THRESHOLD:
-                return 25
-            if change_pct >= _DXY_MODERATE_THRESHOLD:
-                return 15
-            return 0
-        except Exception as e:
-            log.debug("score_macro_bearish failed: %s", e)
-            return 0
+                if change_pct >= _DXY_STRONG_THRESHOLD:
+                    return 25
+                if change_pct >= _DXY_MODERATE_THRESHOLD:
+                    return 15
+                return 0
+            except Exception as e:
+                log.debug("score_macro_bearish %s failed: %s", ticker, e)
+
+        log.warning("All DXY sources failed for macro_bearish — returning 0")
+        return 0
 
     # ── Signal 5: Trend Breakdown (dead cat bounce in downtrend) ─────────────
 
