@@ -76,6 +76,7 @@ class SignalLog(Base):
     short_total_score = Column(Integer, nullable=True)
     short_regime      = Column(String,  nullable=True)
     short_scores      = Column(String,  nullable=True)  # JSON string
+    short_mode        = Column(String,  nullable=True)  # "REVERSAL" | "MOMENTUM" | NULL
 
 
 class SignalAttribution(Base):
@@ -120,6 +121,7 @@ def _migrate_signal_log(engine):
         ("short_total_score", "INTEGER"),
         ("short_regime",      "TEXT"),
         ("short_scores",      "TEXT"),
+        ("short_mode",        "TEXT"),
     ]
     with engine.connect() as conn:
         for col_name, col_type in migrations:

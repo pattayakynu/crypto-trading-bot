@@ -387,6 +387,7 @@ def run_signal_pipeline(pair: str, session, services: dict, client) -> dict:
         short_total_score=short_signal.score,
         short_regime=short_signal.regime,
         short_scores=json.dumps(short_signal.signal_scores or {}),
+        short_mode=short_signal.mode,
     ))
     session.commit()
 

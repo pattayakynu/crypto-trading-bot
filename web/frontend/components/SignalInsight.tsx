@@ -4,7 +4,7 @@ import { useSignals, type CoinSignal, type SignalScan, type ShortSignal } from '
 // Layer display order (matches engine pipeline)
 const LAYER_ORDER = ['whale', 'macro', 'fiat_flow', 'btc_lead', 'ta', 'social'];
 
-const SHORT_SIGNAL_ORDER = ['alt_weakness', 'funding_reset', 'volume_exhaustion', 'macro_bearish', 'trend_breakdown'];
+const SHORT_SIGNAL_ORDER = ['alt_weakness', 'funding_reset', 'volume_exhaustion', 'macro_bearish', 'trend_breakdown', 'bearish_momentum'];
 
 function shortScoreColor(score: number): string {
   if (score >= 65) return 'text-red-400';
@@ -109,8 +109,13 @@ function ScanCard({ scan, dim }: { scan: SignalScan; dim?: boolean }) {
           <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
             <span className="text-[9px] text-red-500 font-semibold">SHORT</span>
             <span className={`text-[10px] font-bold tabular-nums ${shortScoreColor(scan.short.score)}`}>
-              {scan.short.score}/125
+              {scan.short.score}
             </span>
+            {scan.short.mode && (
+              <span className="text-[8px] text-red-400 border border-red-800 rounded px-1 leading-none">
+                {scan.short.mode === 'REVERSAL' ? 'Đảo đỉnh' : 'Đà giảm'}
+              </span>
+            )}
             <span className="text-[9px] text-gray-600 ml-auto">{scan.short.regime}</span>
           </div>
 

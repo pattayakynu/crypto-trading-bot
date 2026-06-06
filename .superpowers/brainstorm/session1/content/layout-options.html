@@ -1,0 +1,86 @@
+<h2>Bố cục Dashboard — Chọn cách sắp xếp mới</h2>
+<p class="subtitle">Cần thêm: <strong>Bảng giá</strong> (BTC/ETH/BNB/SOL/ADA) + <strong>News Feed</strong> (crypto + macro). Chọn layout phù hợp nhất.</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-size:11px; font-family:monospace; line-height:1.6; padding:8px; background:#0f172a; color:#94a3b8; border-radius:6px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">💰 Balance</div>
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">🎛 Bot Controls</div>
+        </div>
+        <div style="background:#1e293b;padding:4px 6px;border-radius:4px;margin-bottom:4px;">📊 Stats Bar</div>
+        <div style="background:#1e293b;padding:4px 6px;border-radius:4px;margin-bottom:4px;">📈 Equity Chart</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">📋 Positions</div>
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">⚡ Events</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div style="background:#166534;padding:4px 6px;border-radius:4px;color:#bbf7d0;">🪙 Bảng giá <span style="font-size:9px">(MỚI)</span></div>
+          <div style="background:#166534;padding:4px 6px;border-radius:4px;color:#bbf7d0;">📰 News Feed <span style="font-size:9px">(MỚI)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Thêm hàng mới phía dưới</h3>
+      <p>Bảng giá (trái) + News (phải) thành một hàng 2 cột ở cuối trang. Layout đơn giản, không thay đổi phần trên.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-size:11px; font-family:monospace; line-height:1.6; padding:8px; background:#0f172a; color:#94a3b8; border-radius:6px;">
+        <div style="background:#166534;padding:4px 6px;border-radius:4px;margin-bottom:4px;color:#bbf7d0;">🪙 Bảng giá — 5 coin (full width) <span style="font-size:9px">(MỚI)</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">💰 Balance</div>
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">🎛 Bot Controls</div>
+        </div>
+        <div style="background:#1e293b;padding:4px 6px;border-radius:4px;margin-bottom:4px;">📊 Stats Bar</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">📈 Equity Chart</div>
+          <div style="background:#166534;padding:4px 6px;border-radius:4px;color:#bbf7d0;">📰 News<br/><span style="font-size:9px">(MỚI)</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">📋 Positions</div>
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">⚡ Events</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Bảng giá trên đầu + News cạnh chart</h3>
+      <p>Bảng giá 5 coin dạng ticker ngang chạy full width trên cùng. News Feed cạnh Equity Chart (2/3 + 1/3). Thông tin quan trọng nhất hiện đầu tiên.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-size:11px; font-family:monospace; line-height:1.6; padding:8px; background:#0f172a; color:#94a3b8; border-radius:6px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">💰 Balance</div>
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">🎛 Bot Controls</div>
+        </div>
+        <div style="background:#1e293b;padding:4px 6px;border-radius:4px;margin-bottom:4px;">📊 Stats Bar</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">📈 Equity Chart</div>
+          <div style="background:#166534;padding:4px 6px;border-radius:4px;color:#bbf7d0;">🪙 Bảng giá<br/><span style="font-size:9px">(MỚI)</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div style="background:#1e293b;padding:4px 6px;border-radius:4px;">📋 Positions</div>
+          <div style="background:#166534;padding:4px 6px;border-radius:4px;color:#bbf7d0;">📰 News Feed<br/><span style="font-size:9px">(thay Events)</span></div>
+        </div>
+        <div style="background:#1e293b;padding:4px 6px;border-radius:4px;margin-top:4px;">⚡ Events (xuống dưới)</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Tích hợp vào lưới hiện có</h3>
+      <p>Bảng giá vào cột phải cạnh Chart. News Feed thay thế vị trí Events (Events xuống dưới cùng). Tận dụng không gian sẵn có, không mở rộng trang.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px">💡 Gợi ý: <strong>B</strong> — Bảng giá ticker ngang ở đầu dễ thấy nhất; News cạnh chart giúp kết hợp phân tích kỹ thuật với thời sự.</p>

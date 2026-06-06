@@ -21,6 +21,15 @@ def _make_klines(closes, volumes):
     return rows
 
 
+def _make_red_klines(closes, volumes):
+    """Klines where open is slightly above close → red candle (close < open)."""
+    rows = []
+    for c, v in zip(closes, volumes):
+        o = c * 1.005  # open trên close = nến đỏ
+        rows.append([0, str(o), str(c * 1.01), str(c * 0.99), str(c), str(v), 0, "0", 0, "0", "0", "0"])
+    return rows
+
+
 # ── Signal 1: Alt Weakness ────────────────────────────────────────────────────
 
 def test_alt_falling_btc_stable_max_score():
@@ -208,38 +217,67 @@ def test_slightly_negative_funding_not_blocked():
     with patch.object(b._regime, "detect", return_value=MarketRegime.BEAR):
         b.get_funding_history = MagicMock(return_value=[-0.0001])  # -0.01% = slightly negative
         b.get_klines = MagicMock(return_value=[])
-        with patch("short_brain.yf.Ticker") as mock_yf:
-            import pandas as pd
-            mock_yf.return_value.history.return_value = pd.DataFrame(
-                {"Close": [25.0] * 10 + [25.0]}
-            )
+        with patch("macro.dxy_change_pct", return_value=0.0):
             sig = b.get_short_signal(
                 "ETHUSDT", btc_change=0.2, alt_change=-1.5, has_open_long=False
             )
     assert sig.blocked_reason is None  # Not blocked by funding
 
 
-def test_should_short_above_threshold():
+def test_reversal_mode_fires_above_threshold():
+    """REVERSAL: alt + funding_reset + volume_exhaustion + macro ≥ 65."""
     b = make_brain()
     with patch.object(b._regime, "detect", return_value=MarketRegime.BEAR):
         b.get_funding_history = MagicMock(
             return_value=[0.00015, 0.0001, 0.00005, 0.00003, 0.00001]
         )
+        # Price near high + volume exhaustion (reversal setup)
         b.get_klines = MagicMock(return_value=_make_klines(
             [100.0] * 17 + [105.0, 104.8, 105.1],
             [1000.0] * 17 + [900.0, 600.0, 450.0],
         ))
-        with patch("short_brain.yf.Ticker") as mock_yf:
-            import pandas as pd
-            mock_yf.return_value.history.return_value = pd.DataFrame(
-                {"Close": [25.0] * 10 + [25.4]}
-            )
+        with patch("macro.dxy_change_pct", return_value=1.6):  # macro 25
             sig = b.get_short_signal(
                 "ETHUSDT", btc_change=0.2, alt_change=-1.5, has_open_long=False
             )
-    assert sig.score >= SHORT_THRESHOLD
+    # alt 25 + fund 25 + vol 15 + macro 25 = 90 ≥ 65
     assert sig.should_short is True
-    assert sig.regime == MarketRegime.BEAR
+    assert sig.mode == "REVERSAL"
+    assert sig.score >= SHORT_THRESHOLD
+
+
+def test_momentum_mode_fires_in_downtrend():
+    """MOMENTUM: trend_breakdown + bearish_momentum + macro ≥ 40 (no reversal setup)."""
+    b = make_brain()
+    with patch.object(b._regime, "detect", return_value=MarketRegime.BEAR):
+        b.get_funding_history = MagicMock(return_value=[0.00001])  # positive, not blocked
+        # Downtrend with weak dead-cat bounce: price below high, falling, weak vol
+        # high=100, current=88 (12% below), recent_low=87, bounce 1.15%
+        # Red candles needed for bearish_momentum → use _make_red_klines
+        closes  = [100.0] * 13 + [96.0, 93.0, 90.0, 88.0, 89.0, 87.0, 88.0]
+        volumes = [1000.0] * 17 + [700.0, 650.0, 680.0]
+        b.get_klines = MagicMock(return_value=_make_red_klines(closes, volumes))
+        with patch("macro.dxy_change_pct", return_value=0.0):  # macro 0
+            sig = b.get_short_signal(
+                "ETHUSDT", btc_change=-2.0, alt_change=-2.5, has_open_long=False
+            )
+    # trend_breakdown (downtrend+bounce) + bearish_momentum (falling) ≥ 40
+    assert sig.mode == "MOMENTUM"
+    assert sig.should_short is True
+
+
+def test_no_short_in_quiet_sideways():
+    """Neither mode fires when nothing is happening."""
+    b = make_brain()
+    with patch.object(b._regime, "detect", return_value=MarketRegime.SIDEWAYS):
+        b.get_funding_history = MagicMock(return_value=[0.0])
+        b.get_klines = MagicMock(return_value=[])
+        with patch("macro.dxy_change_pct", return_value=0.0):
+            sig = b.get_short_signal(
+                "ETHUSDT", btc_change=0.1, alt_change=0.1, has_open_long=False
+            )
+    assert sig.should_short is False
+    assert sig.mode is None
 
 
 def test_signal_scores_populated_in_result():
@@ -247,11 +285,7 @@ def test_signal_scores_populated_in_result():
     with patch.object(b._regime, "detect", return_value=MarketRegime.SIDEWAYS):
         b.get_funding_history = MagicMock(return_value=[0.0])
         b.get_klines = MagicMock(return_value=[])
-        with patch("short_brain.yf.Ticker") as mock_yf:
-            import pandas as pd
-            mock_yf.return_value.history.return_value = pd.DataFrame(
-                {"Close": [25.0] * 10 + [25.0]}
-            )
+        with patch("macro.dxy_change_pct", return_value=0.0):
             sig = b.get_short_signal(
                 "ETHUSDT", btc_change=0.2, alt_change=-1.5, has_open_long=False
             )
@@ -260,6 +294,7 @@ def test_signal_scores_populated_in_result():
     assert "volume_exhaustion" in sig.signal_scores
     assert "macro_bearish"     in sig.signal_scores
     assert "trend_breakdown"   in sig.signal_scores
+    assert "bearish_momentum"  in sig.signal_scores
 
 
 # ── Signal 5: Trend Breakdown ────────────────────────────────────────────────
@@ -311,3 +346,53 @@ def test_trend_breakdown_no_signal_bounce_too_large():
     volumes = [1000.0] * 17 + [700.0, 650.0, 680.0]
     b.get_klines = MagicMock(return_value=_make_klines(closes, volumes))
     assert b.score_trend_breakdown("ETHUSDT") == 0
+
+
+# ── Signal 6: Bearish Momentum ───────────────────────────────────────────────
+
+def test_bearish_momentum_strong():
+    """Drop ≥4% over 6 candles, all red → 25 pts."""
+    b = make_brain()
+    closes  = [100.0] * 14 + [99.0, 97.0, 96.0, 95.0, 94.0, 93.0]  # last 6: 99→93 = -6%
+    volumes = [1000.0] * 20
+    b.get_klines = MagicMock(return_value=_make_red_klines(closes, volumes))
+    assert b.score_bearish_momentum("ETHUSDT") == 25
+
+
+def test_bearish_momentum_moderate():
+    """Drop ~2-4% over 6 candles, ≥3 red → 15 pts."""
+    b = make_brain()
+    # last 6: 100 → 97.5 = -2.5%, all red
+    closes  = [100.0] * 14 + [100.0, 99.5, 99.0, 98.5, 98.0, 97.5]
+    volumes = [1000.0] * 20
+    b.get_klines = MagicMock(return_value=_make_red_klines(closes, volumes))
+    assert b.score_bearish_momentum("ETHUSDT") == 15
+
+
+def test_bearish_momentum_no_signal_when_rising():
+    """Price rising over window → 0 pts."""
+    b = make_brain()
+    closes  = [100.0] * 14 + [95.0, 96.0, 97.0, 98.0, 99.0, 100.0]  # rising
+    volumes = [1000.0] * 20
+    b.get_klines = MagicMock(return_value=_make_red_klines(closes, volumes))
+    assert b.score_bearish_momentum("ETHUSDT") == 0
+
+
+def test_bearish_momentum_no_signal_few_red_candles():
+    """Net drop but mostly green candles (choppy) → below red threshold → 0."""
+    b = make_brain()
+    # Net -2.5% but use green klines (close > open) → red_candles = 0
+    closes  = [100.0] * 14 + [100.0, 99.5, 99.0, 98.5, 98.0, 97.5]
+    volumes = [1000.0] * 20
+    # green klines: open below close
+    rows = []
+    for c, v in zip(closes, volumes):
+        o = c * 0.995  # open below close = green
+        rows.append([0, str(o), str(c * 1.01), str(c * 0.99), str(c), str(v), 0, "0", 0, "0", "0", "0"])
+    b.get_klines = MagicMock(return_value=rows)
+    assert b.score_bearish_momentum("ETHUSDT") == 0
+
+
+def test_bearish_momentum_no_client_returns_zero():
+    b = make_brain(client=None)
+    assert b.score_bearish_momentum("ETHUSDT") == 0

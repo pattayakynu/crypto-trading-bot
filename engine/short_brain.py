@@ -25,8 +25,19 @@ log = logging.getLogger(__name__)
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 
-SHORT_THRESHOLD = 65
-SHORT_MAX_SCORE = 125   # 5 signals × 25 pts
+# Mode A — REVERSAL short (short the top after euphoria):
+#   alt_weakness + funding_reset + volume_exhaustion + macro_bearish (max 100)
+SHORT_THRESHOLD = 65            # reversal threshold
+REVERSAL_MAX_SCORE = 100
+
+# Mode B — MOMENTUM short (short the downtrend continuation / dead cat bounce):
+#   trend_breakdown + bearish_momentum + macro_bearish (max 75)
+#   Lower threshold because it targets a different (continuation) setup.
+MOMENTUM_THRESHOLD = 40
+MOMENTUM_MAX_SCORE = 75
+
+# Legacy alias (some callers/tests reference SHORT_MAX_SCORE)
+SHORT_MAX_SCORE = REVERSAL_MAX_SCORE
 
 # score_alt_weakness
 _BTC_STABLE_THRESHOLD = 0.5       # |btc_change| < 0.5% = BTC stable
@@ -56,6 +67,13 @@ _BOUNCE_MIN             = 0.005   # need ≥0.5% bounce from recent low to quali
 _BOUNCE_MAX             = 0.05    # bounce >5% = might be real recovery, skip
 _TREND_VOL_WEAK         = 0.80    # bounce volume < 80% of baseline = weak (no conviction)
 
+# score_bearish_momentum (sustained downward momentum — Mode B)
+_MOMENTUM_WINDOW        = 6        # số nến gần nhất để đo momentum
+_MOMENTUM_DROP_STRONG   = 0.04    # giảm ≥4% qua window = momentum mạnh
+_MOMENTUM_DROP_MODERATE = 0.02    # giảm ≥2% qua window = momentum vừa
+_MOMENTUM_RED_STRONG    = 4       # ≥4/6 nến đỏ = downtrend rõ
+_MOMENTUM_RED_MODERATE  = 3       # ≥3/6 nến đỏ = downtrend vừa
+
 # hard filter: very negative funding = strong short squeeze risk
 # Slightly negative funding (-0.01%) is normal in bear market → allow SHORT
 # Very negative (< -0.02%) = longs aggressively being paid → block
@@ -72,6 +90,7 @@ class ShortSignal:
     reasons: list
     blocked_reason: Optional[str]
     signal_scores: dict
+    mode: Optional[str] = None   # "REVERSAL" | "MOMENTUM" | None
 
 
 # ── ShortBrain ────────────────────────────────────────────────────────────────
@@ -279,6 +298,44 @@ class ShortBrain:
             return 25
         return 15  # 5–10% below high
 
+    # ── Signal 6: Bearish Momentum (sustained downtrend) — Mode B ─────────────
+
+    def score_bearish_momentum(self, symbol: str) -> int:
+        """
+        Đo momentum giảm bền vững (khác trend_breakdown vốn cần bounce).
+        Dùng cho MOMENTUM short: xác nhận downtrend đang tiếp diễn mạnh.
+
+        Điều kiện (cửa sổ 6 nến gần nhất):
+          1. Giá giảm ròng qua window
+          2. Số nến đỏ đủ nhiều (close < open)
+
+        Max 25 pts.
+        """
+        klines = self.get_klines(symbol)
+        if len(klines) < _KLINES_NEEDED:
+            return 0
+
+        opens  = [float(k[1]) for k in klines]
+        closes = [float(k[4]) for k in klines]
+
+        window_o = opens[-_MOMENTUM_WINDOW:]
+        window_c = closes[-_MOMENTUM_WINDOW:]
+
+        start = window_c[0]
+        end   = window_c[-1]
+        net_change = (end - start) / start if start > 0 else 0.0
+        if net_change >= 0:
+            return 0  # Không giảm ròng → không có bearish momentum
+
+        decline = abs(net_change)
+        red_candles = sum(1 for o, c in zip(window_o, window_c) if c < o)
+
+        if decline >= _MOMENTUM_DROP_STRONG and red_candles >= _MOMENTUM_RED_STRONG:
+            return 25
+        if decline >= _MOMENTUM_DROP_MODERATE and red_candles >= _MOMENTUM_RED_MODERATE:
+            return 15
+        return 0
+
     # ── Main entry point ──────────────────────────────────────────────────────
 
     def get_short_signal(
@@ -289,9 +346,13 @@ class ShortBrain:
         has_open_long: bool,
     ) -> ShortSignal:
         """
-        Evaluate all 4 signals and apply risk filters.
-        Returns ShortSignal with should_short=True only when score ≥ SHORT_THRESHOLD
-        and no hard filter blocks the trade.
+        Evaluate all 6 signals across 2 modes and apply hard risk filters.
+
+        Mode A REVERSAL (≥65): alt_weakness + funding_reset + volume_exhaustion + macro
+        Mode B MOMENTUM (≥40): trend_breakdown + bearish_momentum + macro
+
+        should_short=True if EITHER mode crosses its threshold and no hard filter blocks.
+        Reversal takes precedence for TP sizing when both fire.
         """
         regime = self._regime.detect()
 
@@ -333,40 +394,62 @@ class ShortBrain:
                 signal_scores={},
             )
 
-        # ── Score all 5 signals ────────────────────────────────────────────────
-        s_alt   = self.score_alt_weakness(btc_change, alt_change)
-        s_fund  = self.score_funding_reset(symbol)
-        s_vol   = self.score_volume_exhaustion(symbol)
-        s_macro = self.score_macro_bearish()
-        s_trend = self.score_trend_breakdown(symbol)
+        # ── Score all 6 signals ────────────────────────────────────────────────
+        s_alt      = self.score_alt_weakness(btc_change, alt_change)
+        s_fund     = self.score_funding_reset(symbol)
+        s_vol      = self.score_volume_exhaustion(symbol)
+        s_macro    = self.score_macro_bearish()
+        s_trend    = self.score_trend_breakdown(symbol)
+        s_momentum = self.score_bearish_momentum(symbol)
 
-        total = s_alt + s_fund + s_vol + s_macro + s_trend
         signal_scores = {
             "alt_weakness":      s_alt,
             "funding_reset":     s_fund,
             "volume_exhaustion": s_vol,
             "macro_bearish":     s_macro,
             "trend_breakdown":   s_trend,
+            "bearish_momentum":  s_momentum,
         }
 
+        # ── Two short modes (macro shared as context for both) ─────────────────
+        # Mode A — REVERSAL: short the top after euphoria fades
+        reversal_score = s_alt + s_fund + s_vol + s_macro
+        # Mode B — MOMENTUM: short the downtrend continuation / dead cat bounce
+        momentum_score = s_trend + s_momentum + s_macro
+
+        reversal_fires = reversal_score >= SHORT_THRESHOLD
+        momentum_fires = momentum_score >= MOMENTUM_THRESHOLD
+
+        # Reversal takes precedence (higher conviction setup); pick its score for TP sizing
+        if reversal_fires:
+            mode, score = "REVERSAL", reversal_score
+        elif momentum_fires:
+            mode, score = "MOMENTUM", momentum_score
+        else:
+            mode, score = None, max(reversal_score, momentum_score)
+
         reasons = []
-        if s_alt   > 0: reasons.append(f"alt_weakness={s_alt}")
-        if s_fund  > 0: reasons.append(f"funding_reset={s_fund}")
-        if s_vol   > 0: reasons.append(f"volume_exhaustion={s_vol}")
-        if s_macro > 0: reasons.append(f"macro_bearish={s_macro}")
-        if s_trend > 0: reasons.append(f"trend_breakdown={s_trend}")
+        if s_alt      > 0: reasons.append(f"alt_weakness={s_alt}")
+        if s_fund     > 0: reasons.append(f"funding_reset={s_fund}")
+        if s_vol      > 0: reasons.append(f"volume_exhaustion={s_vol}")
+        if s_macro    > 0: reasons.append(f"macro_bearish={s_macro}")
+        if s_trend    > 0: reasons.append(f"trend_breakdown={s_trend}")
+        if s_momentum > 0: reasons.append(f"bearish_momentum={s_momentum}")
 
         sig = ShortSignal(
-            score=total,
-            should_short=total >= SHORT_THRESHOLD,
+            score=score,
+            should_short=reversal_fires or momentum_fires,
             regime=regime,
             reasons=reasons,
             blocked_reason=None,
             signal_scores=signal_scores,
+            mode=mode,
         )
         log.info(
-            "[ShortBrain] %s score=%d/125 regime=%s alt=%d fund=%d vol=%d macro=%d trend=%d %s",
-            symbol, total, regime, s_alt, s_fund, s_vol, s_macro, s_trend,
-            "→ SHORT" if sig.should_short else "→ SKIP",
+            "[ShortBrain] %s REV=%d/100 MOM=%d/75 regime=%s "
+            "alt=%d fund=%d vol=%d macro=%d trend=%d mom=%d → %s",
+            symbol, reversal_score, momentum_score, regime,
+            s_alt, s_fund, s_vol, s_macro, s_trend, s_momentum,
+            f"SHORT ({mode})" if sig.should_short else "SKIP",
         )
         return sig

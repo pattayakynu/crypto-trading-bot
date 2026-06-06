@@ -126,6 +126,7 @@ export interface ShortSignalInfo {
 export interface ShortSignal {
   score: number;
   regime: string;
+  mode: string | null;
   signals: Record<string, ShortSignalInfo>;
 }
 

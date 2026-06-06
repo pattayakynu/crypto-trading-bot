@@ -38,6 +38,7 @@ SHORT_SIGNAL_MAX = {
     "volume_exhaustion": 25,
     "macro_bearish":     25,
     "trend_breakdown":   25,
+    "bearish_momentum":  25,
 }
 
 SHORT_SIGNAL_LABELS = {
@@ -46,9 +47,13 @@ SHORT_SIGNAL_LABELS = {
     "volume_exhaustion": "Vol cạn kiệt",
     "macro_bearish":     "Vĩ mô giảm",
     "trend_breakdown":   "Xu hướng gãy",
+    "bearish_momentum":  "Đà giảm",
 }
 
-SHORT_SIGNAL_ORDER = ["alt_weakness", "funding_reset", "volume_exhaustion", "macro_bearish", "trend_breakdown"]
+SHORT_SIGNAL_ORDER = [
+    "alt_weakness", "funding_reset", "volume_exhaustion",
+    "macro_bearish", "trend_breakdown", "bearish_momentum",
+]
 
 MIN_CONVICTION  = 55
 HIGH_CONVICTION = 75
@@ -136,6 +141,7 @@ def get_latest_signals():
                         short = {
                             "score":   row.short_total_score or 0,
                             "regime":  row.short_regime or "",
+                            "mode":    getattr(row, "short_mode", None),
                             "signals": short_signals,
                         }
                     except Exception:

@@ -1,0 +1,162 @@
+<h2>Thiết kế Component</h2>
+<p class="subtitle">Preview giao diện thực tế của 2 component mới. Click để chọn nếu OK.</p>
+
+<div class="section">
+  <h3>① Ticker Bar — full width, đầu trang</h3>
+  <div class="mockup">
+    <div class="mockup-header">PriceTickerBar.tsx</div>
+    <div class="mockup-body" style="padding:0">
+      <div style="background:#0f172a; padding:10px 16px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; border-radius:0 0 6px 6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f8fafc;font-weight:600;font-size:13px;">BTC</span>
+          <span style="color:#f8fafc;font-size:13px;">$67,420</span>
+          <span style="color:#4ade80;font-size:11px;">▲ +1.24%</span>
+        </div>
+        <div style="width:1px;height:20px;background:#334155"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f8fafc;font-weight:600;font-size:13px;">ETH</span>
+          <span style="color:#f8fafc;font-size:13px;">$3,210</span>
+          <span style="color:#f87171;font-size:11px;">▼ -0.87%</span>
+        </div>
+        <div style="width:1px;height:20px;background:#334155"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f8fafc;font-weight:600;font-size:13px;">BNB</span>
+          <span style="color:#f8fafc;font-size:13px;">$598</span>
+          <span style="color:#4ade80;font-size:11px;">▲ +0.51%</span>
+        </div>
+        <div style="width:1px;height:20px;background:#334155"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f8fafc;font-weight:600;font-size:13px;">SOL</span>
+          <span style="color:#f8fafc;font-size:13px;">$178</span>
+          <span style="color:#f87171;font-size:11px;">▼ -2.14%</span>
+        </div>
+        <div style="width:1px;height:20px;background:#334155"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f8fafc;font-weight:600;font-size:13px;">ADA</span>
+          <span style="color:#f8fafc;font-size:13px;">$0.452</span>
+          <span style="color:#4ade80;font-size:11px;">▲ +3.20%</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite"></div>
+          <span style="color:#64748b;font-size:10px;">cập nhật 10s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>② News Feed — cạnh Equity Chart (1/3 chiều rộng)</h3>
+  <div class="mockup">
+    <div class="mockup-header">NewsFeed.tsx</div>
+    <div class="mockup-body">
+      <div style="background:#0f172a;border-radius:6px;padding:12px;max-height:280px;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">Tin tức thị trường</span>
+          <div style="display:flex;gap:6px;">
+            <span style="background:#1e3a5f;color:#60a5fa;font-size:9px;padding:2px 6px;border-radius:4px;cursor:pointer;">Crypto</span>
+            <span style="background:#1e293b;color:#64748b;font-size:9px;padding:2px 6px;border-radius:4px;cursor:pointer;">Macro</span>
+            <span style="background:#1e293b;color:#64748b;font-size:9px;padding:2px 6px;border-radius:4px;cursor:pointer;">Tất cả</span>
+          </div>
+        </div>
+
+        <!-- News item 1 - CRITICAL -->
+        <div style="padding:8px 0;border-bottom:1px solid #1e293b;">
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <span style="font-size:12px;flex-shrink:0;">🚨</span>
+            <div>
+              <p style="color:#fca5a5;font-size:11px;line-height:1.4;margin:0 0 3px">Fed giữ nguyên lãi suất, Bitcoin phản ứng tăng mạnh</p>
+              <span style="color:#475569;font-size:10px;">Reuters · 12 phút trước</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- News item 2 - crypto -->
+        <div style="padding:8px 0;border-bottom:1px solid #1e293b;">
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <span style="font-size:12px;flex-shrink:0;">📈</span>
+            <div>
+              <p style="color:#e2e8f0;font-size:11px;line-height:1.4;margin:0 0 3px">ETH ETF inflows đạt $400M trong tuần, cao nhất 3 tháng</p>
+              <span style="color:#475569;font-size:10px;">CryptoPanic · 34 phút trước</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- News item 3 - macro -->
+        <div style="padding:8px 0;border-bottom:1px solid #1e293b;">
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <span style="font-size:12px;flex-shrink:0;">📉</span>
+            <div>
+              <p style="color:#e2e8f0;font-size:11px;line-height:1.4;margin:0 0 3px">DXY tăng 0.4% sau số liệu CPI Mỹ cao hơn dự báo</p>
+              <span style="color:#475569;font-size:10px;">Yahoo Finance · 1 giờ trước</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- News item 4 -->
+        <div style="padding:8px 0;border-bottom:1px solid #1e293b;">
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <span style="font-size:12px;flex-shrink:0;">⚠️</span>
+            <div>
+              <p style="color:#e2e8f0;font-size:11px;line-height:1.4;margin:0 0 3px">Binance ngừng một số dịch vụ tại EU theo quy định MiCA</p>
+              <span style="color:#475569;font-size:10px;">CryptoPanic · 2 giờ trước</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- News item 5 -->
+        <div style="padding:8px 0;">
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <span style="font-size:12px;flex-shrink:0;">📰</span>
+            <div>
+              <p style="color:#e2e8f0;font-size:11px;line-height:1.4;margin:0 0 3px">S&P 500 giảm nhẹ trước cuộc họp FOMC tuần tới</p>
+              <span style="color:#475569;font-size:10px;">Yahoo Finance · 3 giờ trước</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>③ Layout tổng thể trang Dashboard</h3>
+  <div class="mockup">
+    <div class="mockup-header">page.tsx — bố cục sau khi thêm</div>
+    <div class="mockup-body">
+      <div style="font-size:11px;font-family:monospace;line-height:1.8;color:#94a3b8;">
+        <div style="background:#166534;color:#bbf7d0;padding:3px 8px;border-radius:4px;margin-bottom:3px;">🪙 PriceTickerBar — BTC ETH BNB SOL ADA (full width)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:3px;">
+          <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">💰 BalanceCard</div>
+          <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">🎛 BotControls</div>
+        </div>
+        <div style="background:#1e293b;padding:3px 8px;border-radius:4px;margin-bottom:3px;">📊 StatsBar</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:3px;margin-bottom:3px;">
+          <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">📈 EquityChart</div>
+          <div style="background:#166534;color:#bbf7d0;padding:3px 8px;border-radius:4px;">📰 NewsFeed</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+          <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">📋 PositionsList</div>
+          <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">⚡ EventFeed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:16px;">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>Thiết kế OK, tiến hành</h3>
+      <p>Đồng ý với ticker bar + news feed như trên</p>
+    </div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">✎</div>
+    <div class="content">
+      <h3>Cần chỉnh sửa</h3>
+      <p>Muốn thay đổi gì đó trong thiết kế</p>
+    </div>
+  </div>
+</div>
