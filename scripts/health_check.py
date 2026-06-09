@@ -90,8 +90,38 @@ def check_engine() -> tuple[bool, str]:
         return False, str(e)
 
 
-def check_binance() -> tuple[bool, str]:
-    """Binance API có kết nối được và balance > 0 không."""
+# ── VPN routing auto-heal ────────────────────────────────────────────────────
+# Sau khi server reboot, iptables MARK rule còn (đã netfilter-persistent save)
+# nhưng `ip rule` cho fwmark thường bị mất → Docker traffic đi thẳng (bị block).
+# WireGuard PostUp lẽ ra thêm lại rule này, nhưng nếu wg0 up trước khi rule mất
+# do nguyên nhân khác, ta tự thêm lại ở đây.
+_FWMARK = "51821"          # 0xca6d — mark do iptables mangle gán cho Docker traffic
+_WG_TABLE = "51820"        # routing table trỏ qua wg0
+
+
+def _fwmark_rule_present() -> bool:
+    try:
+        out = subprocess.check_output(["ip", "rule", "show"], timeout=5, text=True)
+        return _FWMARK in out or "0xca6d" in out
+    except Exception:
+        return False
+
+
+def _heal_routing() -> bool:
+    """Thêm lại ip rule fwmark → bảng wg0. Trả True nếu đã thêm."""
+    try:
+        subprocess.run(
+            ["ip", "rule", "add", "fwmark", _FWMARK, "lookup", _WG_TABLE, "priority", "200"],
+            timeout=5, check=True,
+        )
+        return True
+    except Exception as e:
+        print(f"[health_check] heal_routing failed: {e}")
+        return False
+
+
+def _test_binance() -> tuple[bool, str]:
+    """Gọi Binance qua container engine. (ok, message)."""
     script = """
 import os; from dotenv import load_dotenv; load_dotenv(override=True)
 from binance.client import Client
@@ -119,6 +149,32 @@ except Exception as e:
         return False, "Timeout — Binance API không phản hồi"
     except Exception as e:
         return False, str(e)
+
+
+def check_binance() -> tuple[bool, str]:
+    """
+    Binance API có kết nối được không. Tự khắc phục (auto-heal) nếu phát hiện
+    traffic không qua VPN: thêm lại ip rule fwmark rồi thử lại 1 lần.
+    """
+    ok, msg = _test_binance()
+    if ok:
+        return True, msg
+
+    # Fail — thử auto-heal nếu là lỗi định tuyến (restricted location)
+    looks_like_routing = "restricted" in msg.lower() or "balance = 0" in msg.lower() or "timeout" in msg.lower()
+    if looks_like_routing and not _fwmark_rule_present():
+        print("[health_check] Binance blocked + fwmark rule missing → auto-heal")
+        if _heal_routing():
+            ok2, msg2 = _test_binance()
+            if ok2:
+                send_telegram(
+                    "🔧 CRYPTO BOT — TỰ KHẮC PHỤC\n"
+                    "Phát hiện routing VPN mất sau reboot → đã thêm lại ip rule fwmark.\n"
+                    f"Binance OK trở lại: {msg2}"
+                )
+                return True, f"{msg2} (đã auto-heal routing)"
+            return False, f"Auto-heal thất bại — vẫn lỗi: {msg2}"
+    return False, msg
 
 
 def check_last_scan() -> tuple[bool, str]:
